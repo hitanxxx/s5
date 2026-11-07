@@ -104,6 +104,6 @@ int main(int argc, char **argv) {
     schk(0 == log_end(), return -1);
     schk(0 == process_end(), return -1);
     unlink(S5_PATH_PID);
-    return 0;
+    return OK;
 }
 

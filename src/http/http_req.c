@@ -6,7 +6,7 @@ static int web_req_hdrs(con_t *c, web_req_t *req);
 static int web_req_payload(con_t *c, web_req_t *req);
 
 web_req_t *web_req_alloc(void) {
-    web_req_t *rr = mem_pool_alloc(sizeof(web_req_t));
+    web_req_t *rr = mem_alloc(sizeof(web_req_t));
     schk(rr, return NULL);
     rr->cb = web_req_line;
     return rr;
@@ -14,7 +14,7 @@ web_req_t *web_req_alloc(void) {
 
 void web_req_free(web_req_t *webreq) {
     if (webreq)
-        mem_pool_free(webreq);
+        mem_free(webreq);
 }
 
 static int web_req_line(con_t *c, web_req_t *req) {
@@ -42,11 +42,11 @@ static int web_req_line(con_t *c, web_req_t *req) {
         if (meta_getlen(c->meta) < 1) {
             int recvd = c->recv(c, c->meta->last, meta_getfree(c->meta));
             if (recvd < 0) {
-                if (recvd == -11) {
-                    return -11;
+                if (recvd == AGAIN) {
+                    return AGAIN;
                 }
                 err("http req. recv err\n");
-                return -1;
+                return ERROR;
             }
             c->meta->last += recvd;
         }
@@ -56,7 +56,7 @@ static int web_req_line(con_t *c, web_req_t *req) {
             p = meta->pos;
             if ((*p < 32 || *p > 127) && *p != CR && *p != LF) {
                 err("http req. contains non-printable character. [%d]\n", *p);
-                return -1;
+                return ERROR;
             }
             if (req->state == s_method_init) {
                 if (*p == CR || *p == LF || *p == SP) {
@@ -73,7 +73,7 @@ static int web_req_line(con_t *c, web_req_t *req) {
                     req->state = s_scheme_init;
                     if (req->method.len < 1 || req->method.len > 16) {
                         err("http req. request line. method string length [%d] illegal\n", req->method.len);
-                        return -1;
+                        return ERROR;
                     }
                 }
             }
@@ -105,7 +105,7 @@ static int web_req_line(con_t *c, web_req_t *req) {
                     continue;
                 } else {
                     err("webreq request line. s_scheme_slash illegal [%c]\n", *p);
-                    return -1;
+                    return ERROR;
                 }
             }
 
@@ -115,7 +115,7 @@ static int web_req_line(con_t *c, web_req_t *req) {
                     continue;
                 } else {
                     err("webreq request line. s_scheme_slash illegal [%c]\n", *p);
-                    return -1;
+                    return ERROR;
                 }
             }
 
@@ -184,14 +184,14 @@ static int web_req_line(con_t *c, web_req_t *req) {
                     return req->cb(c, req);
                 } else {
                     err("http req. request line. s_end illegal [%c]\n", *p);
-                    return -1;
+                    return ERROR;
                 }
             }
         }
 
         if (meta_getfree(c->meta) < 1) {
             err("http req. meta full\n");
-            return -1;
+            return ERROR;
         }
     }
 }
@@ -212,11 +212,11 @@ static int web_req_hdrs(con_t *c, web_req_t *req) {
         if (meta_getlen(c->meta) < 1) {
             int recvd = c->recv(c, c->meta->last, meta_getfree(c->meta));
             if (recvd < 0) {
-                if (recvd == -11) {
-                    return -11;
+                if (recvd == AGAIN) {
+                    return AGAIN;
                 }
                 err("http req. recv err\n");
-                return -1;
+                return ERROR;
             }
             c->meta->last += recvd;
         }
@@ -226,7 +226,7 @@ static int web_req_hdrs(con_t *c, web_req_t *req) {
             p = meta->pos;
             if ((*p < 32 || *p > 127) && *p != CR && *p != LF) {
                 err("http req. contains non-printable character. [%d]\n", *p);
-                return -1;
+                return ERROR;
             }
 
             if (req->state == s_key_init) {
@@ -275,7 +275,7 @@ static int web_req_hdrs(con_t *c, web_req_t *req) {
                     continue;
                 } else {
                     err("http req. headers. s_end illegal [%c]\n", *p);
-                    return -1;
+                    return ERROR;
                 }
             }
 
@@ -300,14 +300,14 @@ static int web_req_hdrs(con_t *c, web_req_t *req) {
                     return req->cb(c, req);
                 } else {
                     err("http req. headers. s_done illegal [%c]\n", *p);
-                    return -1;
+                    return ERROR;
                 }
             }
         }
 
         if (meta_getfree(c->meta) < 1) {
             err("http req. meta full\n");
-            return -1;
+            return ERROR;
         }
     }
 }
@@ -320,11 +320,11 @@ static int web_req_payload(con_t *c, web_req_t *req) {
                 req->payloadn = strtol((char *)req->kvs[i].v.data, NULL, 10);
                 if (req->payloadn < 0) {
                     err("http req. payload length illegal. [%d]\n", req->payloadn);
-                    return -1;
+                    return ERROR;
                 }
                 if (req->payloadn > (10 * 1024 * 1024)) {
                     err("http req. payload length too big. [%d]\n", req->payloadn);
-                    return -1;
+                    return ERROR;
                 }
             }
         }
@@ -333,23 +333,23 @@ static int web_req_payload(con_t *c, web_req_t *req) {
             schk(0 == meta_alloc(&req->payload, req->payloadn), return -1);
             int remain = meta_getlen(c->meta);
             if (remain) {
-                schk(0 == meta_pdata(req->payload, c->meta->pos, meta_getlen(c->meta)), return -1);
+                schk(OK == meta_pdata(req->payload, c->meta->pos, meta_getlen(c->meta)), return ERROR);
             }
         } else {
-            return 0;
+            return OK;
         }
     }
 
     while (meta_getlen(req->payload) < req->payloadn) {
         int recvd = c->recv(c, req->payload->last, meta_getfree(req->payload));
         if (recvd < 0) {
-            if (recvd == -11) {
-                return -11;
+            if (recvd == AGAIN) {
+                return AGAIN;
             }
             err("http req. recv payload err\n");
-            return -1;
+            return AGAIN;
         }
         req->payload->last += recvd;
     }
-    return 0;
+    return OK;
 }

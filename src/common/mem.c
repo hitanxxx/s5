@@ -5,17 +5,18 @@
 #if defined(MEM_BY_SYSCALL)
 void *sys_alloc(int size) { return calloc(1, size); }
 void sys_free(void *addr) { free(addr); }
-int mem_pool_deinit(void) { return 0; }
-int mem_pool_init(void) { return 0; }
-int mem_pool_free(void *p) {
+int mem_exit(void) { return OK; }
+int mem_init(void) { return OK; }
+int mem_free(void *p) {
     sys_free(p);
-    return 0;
+    return OK;
 }
-void *mem_pool_alloc(int size) { return sys_alloc(size); }
-char *mem_pool_ver(void) { return "MEM_BY_SYSCALL"; }
+void *mem_alloc(int size) { return sys_alloc(size); }
+char *mem_ver(void) { return "MEM_BY_SYSCALL"; }
 #else
 
-#define MP_OBJ_MAGIC 0xa100beef
+#define MP_OBJ_MAGIC            0xa100beef  ///magic for mempool
+#define MP_OBJ_MAGIC_SYSCALL    0xa200beef  ///magic for syscall
 #define MP_BLK_MAX 6
 #define MP_OBJ_MAX 1024
 
@@ -62,7 +63,7 @@ void sys_free(void *addr) {
     }
 }
 
-int mem_pool_deinit(void) {
+int mem_exit(void) {
     if (g_mem_ctx.blks) {
         int i = 0;
         for (i = 0; i < MP_BLK_MAX; i++) {
@@ -72,12 +73,12 @@ int mem_pool_deinit(void) {
         }
         free(g_mem_ctx.blks);
     }
-    return 0;
+    return OK;
 }
 
-int mem_pool_init(void) {
+int mem_init(void) {
     g_mem_ctx.blks = malloc(sizeof(mem_block_t) * MP_BLK_MAX);
-    schk(g_mem_ctx.blks, return -1);
+    schk(g_mem_ctx.blks, return ERROR);
     memset(g_mem_ctx.blks, 0x0, sizeof(mem_block_t) * MP_BLK_MAX);
 
     for (int i = 0; i < MP_BLK_MAX; i++) {
@@ -98,7 +99,7 @@ int mem_pool_init(void) {
             obj_space = 16896;
         }
         g_mem_ctx.blks[i].pn = ((sizeof(mem_obj_t) + obj_space) * obj_n);
-        schk(NULL != (g_mem_ctx.blks[i].p = malloc(g_mem_ctx.blks[i].pn)), return -1);
+        schk(NULL != (g_mem_ctx.blks[i].p = malloc(g_mem_ctx.blks[i].pn)), return ERROR);
         memset(g_mem_ctx.blks[i].p, 0x0, g_mem_ctx.blks[i].pn);
 
         queue_init(&g_mem_ctx.blks[i].usable);
@@ -111,19 +112,25 @@ int mem_pool_init(void) {
             p += (sizeof(mem_obj_t) + obj_space);
         }
     }
-    return 0;
+    return OK;
 }
 
-int mem_pool_free(void *p) {
+int mem_free(void *p) {
     mem_obj_t *obj = ptr_get_struct(p, mem_obj_t, addr);
-    schk(obj->magic == MP_OBJ_MAGIC, return -1);
-    queue_remove(&obj->queue);
-    queue_insert_tail(&g_mem_ctx.blks[obj->blk_idx].usable, &obj->queue);
-    obj->magic = 0;
-    return 0;
+    if (obj->magic == MP_OBJ_MAGIC) {
+        queue_remove(&obj->queue);
+        queue_insert_tail(&g_mem_ctx.blks[obj->blk_idx].usable, &obj->queue);
+        obj->magic = 0;
+        return OK;
+    } else if (obj->magic == MP_OBJ_MAGIC_SYSCALL) {
+        free(obj);
+        return OK;
+    }
+    err("mem free. magic not support. [0x%x]\n", obj->magic);
+    return ERROR;
 }
 
-void *mem_pool_alloc(int size) {
+void *mem_alloc(int size) {
     int blk_idx = 0;
     int blk_size = 0;
     assert(size > 0);
@@ -148,8 +155,15 @@ void *mem_pool_alloc(int size) {
         blk_idx = 5;
         blk_size = 16896;
     } else {
-        err("alloc size [%d] too big. not support\n", size);
-        return NULL;
+        ///Use system calls as a fallback for large memory
+        mem_obj_t *obj = malloc(sizeof(mem_obj_t) + size);
+        if (!obj) {
+            err("mem alloc large mem (system call) err. [%d]\n", errno);
+            return NULL;
+        }
+        memset(obj, 0x0, sizeof(mem_obj_t) + size);
+        obj->magic = MP_OBJ_MAGIC_SYSCALL;
+        return obj->addr;
     }
 
     if (queue_empty(&g_mem_ctx.blks[blk_idx].usable)) {
@@ -166,5 +180,5 @@ void *mem_pool_alloc(int size) {
     return obj->addr;
 }
 
-char *mem_pool_ver(void) { return g_mp_ver; }
+char *mem_ver(void) { return g_mp_ver; }
 #endif

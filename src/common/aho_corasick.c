@@ -15,7 +15,7 @@ int ezac_node_free(ezac_node_t *root) {
         if (p != root)
             sys_free(p);
     }
-    return 0;
+    return OK;
 }
 
 int ezac_free(ezac_ctx_t *ctx) {
@@ -23,7 +23,7 @@ int ezac_free(ezac_ctx_t *ctx) {
         ezac_node_free(&ctx->root);
         sys_free(ctx);
     }
-    return 0;
+    return OK;
 }
 
 ezac_ctx_t *ezac_init() {
@@ -48,7 +48,7 @@ int ezac_add(ezac_ctx_t *ctx, char *data, int datan) {
         n = n->arr[idx];
     }
     n->fendup = 1;
-    return 0;
+    return OK;
 }
 
 int ezac_compiler(ezac_ctx_t *ctx) {
@@ -81,17 +81,16 @@ int ezac_compiler(ezac_ctx_t *ctx) {
             }
         }
     }
-    return 0;
+    return OK;
 }
 
 int ezac_reset(ezac_ctx_t *ctx) {
     ctx->cur = &ctx->root;
-    return 0;
+    return OK;
 }
 
 int ezac_find(ezac_ctx_t *ctx, char *data, int datan) {
-    int i = 0;
-    for (i = 0; i < datan; i++) {
+    for (int i = 0; i < datan; i++) {
         int idx = data[i];
         if (idx < 0 || idx > EZAC_MAX)
             idx = 0;
@@ -101,11 +100,11 @@ int ezac_find(ezac_ctx_t *ctx, char *data, int datan) {
         if (ctx->cur->arr[idx]) {
             if (ctx->cur->arr[idx]->fendup) {
                 ezac_reset(ctx);
-                return 0;
+                return OK;
             } else {
                 ctx->cur = ctx->cur->arr[idx];
             }
         }
     }
-    return -1;
+    return ERROR;
 }

@@ -50,25 +50,25 @@ int sys_file_write_data(char *fname, char *data, int datan) {
 
     if (!fname || !data) {
         err("param is null.\n");
-        return -1;
+        return ERROR;
     }
 
     fd = open(fname, O_WRONLY|O_CREAT|O_TRUNC, 0777);
     if (fd <= 0) {
         err("file %s open failed. [%d]\n", fname, errno);
-        return -1;
+        return ERROR;
     }
     while (writen < datan) {
         ssize_t ret = write(fd, data + writen, datan - writen);
         if (ret <= 0) {
             err("file %s write failed. [%d]\n", fname, errno);
             close(fd);
-            return -1;
+            return ERROR;
         }
         writen += ret;
     }
     close(fd);
-    return 0;
+    return OK;
 }
 
 int sys_file_exist(const char *fname) {

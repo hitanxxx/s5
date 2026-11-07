@@ -5,7 +5,7 @@
 extern "C" {
 #endif
 
-#define NET_EV_MAX      768
+#define NET_EV_MAX      8192
 #define NET_TMOUT       5000
 
 #define EV_NONE     0x0
@@ -83,8 +83,6 @@ void net_ev_loop(void);
 
 int net_timer_add(con_t *c, net_timer_cb cb, uint64_t delay_ms);
 int net_timer_del(con_t *c);
-
-
 ev_timer_t *ev_timer_alloc(net_timer_cb cb, void *data, uint64_t delay_ms);
 ev_timer_t *ev_timer_alloc_once(net_timer_cb cb, void *data, uint64_t delay_ms);
 void ev_timer_free(ev_timer_t *timer);

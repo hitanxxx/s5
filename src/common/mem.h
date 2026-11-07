@@ -8,11 +8,11 @@ extern "C" {
 void *sys_alloc(int size);
 void sys_free(void *addr);
 
-int mem_pool_free(void *addr);
-void *mem_pool_alloc(int size);
-int mem_pool_deinit();
-int mem_pool_init();
-char *mem_pool_ver();
+int mem_free(void *addr);
+void *mem_alloc(int size);
+int mem_exit();
+int mem_init();
+char *mem_ver();
 
 #ifdef __cplusplus
 }

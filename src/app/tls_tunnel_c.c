@@ -14,20 +14,20 @@ static int tls_tunnel_c_recv_in_cache(con_t *cdown) {
             err("tls tunnel. cdown recv in cache too much\n");
             net_free(session->cup);
             net_free(session->cdown);
-            return -1;
+            return ERROR;
         }
 
         /// cache read data
         readn = cdown->recv(cdown, meta->last, meta_getfree(meta));
         if (readn < 0) {
-            if (readn == -11) {
-                return -11;
+            if (readn == AGAIN) {
+                return AGAIN;
             }
             ///do not print the error message. handle them silently
             ///err("TLS tunnel c. cdown recv in cache err\n");
             net_free(session->cup);
             net_free(session->cdown);
-            return -1;
+            return ERROR;
         }
         meta->last += readn;
     }
@@ -47,20 +47,20 @@ static int tls_tunnel_c_auth_send(con_t *cup) {
 
     int sendn = cup->send_chain(cup, meta);
     if (sendn < 0) {
-        if (sendn == -11) {
+        if (sendn == AGAIN) {
             net_timer_add(cup, tls_session_timeout, TLS_TMOUT);
-            return -11;
+            return AGAIN;
         }
         err("tls tunnel. auth req send err\n");
         net_free(cup);
         net_free(session->cdown);
-        return -1;
+        return ERROR;
     }
 
     net_timer_del(cup);
     meta_clr(meta);
 
-    session->cdown->read_cb = tls_tunnel_traffic_proc;
+    session->cdown->read_cb = tls_tunnel_transport;
     session->cdown->write_cb = NULL;
     return session->cdown->read_cb(session->cdown);
 }
@@ -69,11 +69,11 @@ static int tls_tunnel_c_auth_build(con_t *cup) {
     tls_tunnel_session_t *session = cup->user_data;
     
     if (!cup->meta) {
-        if (0 != meta_alloc(&cup->meta, TLS_METAN)) {
+        if (OK != meta_alloc(&cup->meta, TLS_METAN)) {
             err("tls tunnel. cup meta alloc err\n");
             net_free(cup);
             net_free(session->cdown);
-            return -1;
+            return ERROR;
         }
     }
     meta_t *meta = cup->meta;
@@ -94,11 +94,11 @@ static int tls_tunnel_c_connect_ssl(con_t *cup) {
     tls_tunnel_session_t *session = cup->user_data;
 
     if (!cup->ssl) {
-        if (0 != net_ssl_create(cup, L_SSL_CLIENT)) {
+        if (OK != net_ssl_create(cup, L_SSL_CLIENT)) {
             err("tls tunnel. ssl create err\n");
             net_free(cup);
             net_free(session->cdown);
-            return -1;
+            return ERROR;
         }
     }
 
@@ -106,20 +106,20 @@ static int tls_tunnel_c_connect_ssl(con_t *cup) {
         err("tls tunnel. ssl handshake err\n");
         net_free(cup);
         net_free(session->cdown);
-        return -1;
+        return ERROR;
     }
 
     if (!net_ssl_check_handshaked(cup)) {
         int rc = net_ssl_handshake(cup);
         if (rc < 0) {
-            if (rc == -11) {
+            if (rc == AGAIN) {
                 net_timer_add(cup, tls_session_timeout, TLS_TMOUT);
-                return -11;
+                return AGAIN;
             }
             err("tls tunnel. ssl handshake err\n");
             net_free(cup);
             net_free(session->cdown);
-            return -1;
+            return ERROR;
         }
     }
 
@@ -133,11 +133,11 @@ static int tls_tunnel_c_connect_chk(con_t *cup) {
 
     net_timer_del(cup);
 
-    if (0 != net_connect_chk(cup)) {
+    if (OK != net_connect_chk(cup)) {
         err("tls tunnel. connect chk err\n");
         net_free(cup);
         net_free(session->cdown);
-        return -1;
+        return ERROR;
     }
 
     cup->read_cb = NULL;
@@ -149,18 +149,18 @@ int tls_tunnel_c_accept(con_t *cdown) {
     net_timer_del(cdown);
 
     if (!cdown->meta) {
-        if (0 != meta_alloc(&cdown->meta, TLS_METAN)) {
+        if (OK != meta_alloc(&cdown->meta, TLS_METAN)) {
             err("tls tunnel. cdown meta alloc err\n");
             net_free(cdown);
-            return -1;
+            return ERROR;
         }
     }
 
     tls_tunnel_session_t *session = NULL;
-    if (0 != tls_session_alloc(&session)) {
+    if (OK != tls_session_alloc(&session)) {
         err("tls tunnel. session alloc err\n");
         net_free(cdown);
-        return -1;
+        return ERROR;
     }
     session->cdown = cdown;
     cdown->user_data = session;
@@ -169,10 +169,10 @@ int tls_tunnel_c_accept(con_t *cdown) {
     cdown->write_cb = NULL;
 
 
-    if (0 != net_alloc(&session->cup)) {
+    if (OK != net_alloc(&session->cup)) {
         err("tls tunnel. session cup alloc err\n");
         net_free(cdown);
-        return -1;
+        return ERROR;
     }
     session->cup->user_data = session;
     session->cup->free_user_data = tls_session_release_by_cup;
@@ -183,13 +183,13 @@ int tls_tunnel_c_accept(con_t *cdown) {
     tls_tunnel_s_addr(&session->cup->addr);
     int rc = net_connect(session->cup, NULL, 1);
     if (rc < 0) {
-        if (rc == -11) {
+        if (rc == AGAIN) {
             net_timer_add(session->cup, tls_session_timeout, TLS_TMOUT);
         } else {
             err("tls tunnel. cup connect err\n");
             net_free(session->cup);
             net_free(cdown);
-            return -1;
+            return ERROR;
         }
     }
     
@@ -205,7 +205,7 @@ int tls_tunnel_c_init(void) {
         addr.sin_addr.s_addr = htonl(INADDR_ANY);
         net_listen(tls_tunnel_c_accept,    &addr, 0);
     }
-    return 0;
+    return OK;
 }
 
-int tls_tunnel_c_exit(void) { return 0; }
+int tls_tunnel_c_exit(void) { return OK; }

@@ -10,23 +10,23 @@ static int s5_cdown_recv(con_t *cdown) {
     meta_clr(meta);
     for (;;) {
         if (meta_getfree(meta)  == 0) {
-            return -11;
+            return AGAIN;
         }
         
         int recvn = cdown->recv(cdown, meta->last, meta_getfree(meta));
         if (recvn < 0) {
-            if (recvn == -11) {
+            if (recvn == AGAIN) {
                 net_timer_add(cdown, tls_session_timeout, TLS_TMOUT);
-                return -11;
+                return AGAIN;
             }
             err("s5. cdown wait cup connect. recv err.\n");
             net_free(session->cup);
             net_free(cdown);
-            return -1;
+            return ERROR;
         }
         meta->last += recvn;
     }
-    return 0;
+    return OK;
 }
 
 int s5_p2_rsp(con_t *cdown) {
@@ -37,21 +37,21 @@ int s5_p2_rsp(con_t *cdown) {
     while (meta_getlen(meta) > 0) {
         int rc = cdown->send(cdown, meta->pos, meta_getlen(meta));
         if (rc < 0) {
-            if (rc == -11) {
+            if (rc == AGAIN) {
                 net_ev_set(cdown, EV_W);
                 net_timer_add(cdown, tls_session_timeout, TLS_TMOUT);
-                return -11;
+                return AGAIN;
             }
             err("s5. p2 rsp send err\n");
             net_free(session->cup);
             net_free(cdown);
-            return -1;
+            return ERROR;
         }
         meta->pos += rc;
     }
     net_timer_del(cdown);
 
-    cdown->read_cb = tls_tunnel_traffic_proc;
+    cdown->read_cb = tls_tunnel_transport;
     cdown->write_cb = NULL;
     return cdown->read_cb(cdown);
 }
@@ -64,11 +64,11 @@ int s5_cup_connect_chk(con_t *cup) {
 
     net_timer_del(cup);
 
-    if (0 != net_connect_chk(cup)) {
+    if (OK != net_connect_chk(cup)) {
         err("s5. cup connect chk err\n");
         net_free(cup);
         net_free(cdown);
-        return -1;
+        return AGAIN;
     }
     
     meta_clr(meta);
@@ -97,14 +97,14 @@ int s5_cup_connect(con_t *cup) {
     
     int rc = net_connect(session->cup, NULL, 1);
     if (rc < 0) {
-        if (rc == -11) {
+        if (rc == AGAIN) {
             net_timer_add(cup, tls_session_timeout, TLS_TMOUT);
-            return -11;
+            return AGAIN;
         }
         err("s5. cup connect err\n");
         net_free(cup);
         net_free(session->cdown);
-        return -1;
+        return ERROR;
     }
     
     return cup->write_cb(cup);
@@ -136,9 +136,9 @@ int s5_cup_addr(con_t *cdown) {
     cdown->read_cb = s5_cdown_recv;
     cdown->write_cb = NULL;
 
-    schk(net_alloc(&session->cup) == 0, {
+    schk(net_alloc(&session->cup) == OK, {
         net_free(cdown);
-        return -1;
+        return ERROR;
     });
     session->cup->user_data = session;
     session->cup->free_user_data = tls_session_release_by_cup;
@@ -154,13 +154,13 @@ int s5_cup_addr(con_t *cdown) {
     } 
 
     ///DOMAIN TYP.
-    if (0 != dns_resolve((char*)s5p2->dst_addr, s5p2->dst_addr_n, s5_cup_dns_cb, session, &session->dns)) {
+    if (OK != dns_resolve((char*)s5p2->dst_addr, s5p2->dst_addr_n, s5_cup_dns_cb, session, &session->dns)) {
         err("s5. dns resolve err\n");
         net_free(session->cup);
         net_free(session->cdown);
-        return -1;
+        return ERROR;
     }
-    return 0;
+    return OK;
 }
 
 int s5_p2_req(con_t *cdown) {
@@ -195,13 +195,13 @@ int s5_p2_req(con_t *cdown) {
             int recvn = cdown->recv(cdown, meta->last, meta_getfree(meta));
             ///s5 p2 tls. recv return value (-1/-11/>0)
             if (recvn < 0) {
-                if (recvn == -11) {
+                if (recvn == AGAIN) {
                     net_timer_add(cdown, tls_session_timeout, TLS_TMOUT);
-                    return -11;
+                    return AGAIN;
                 }
                 err("s5. p2 recv err\n");
                 net_free(cdown);
-                return -1;
+                return ERROR;
             }
             meta->last += recvn;
         }
@@ -256,7 +256,7 @@ int s5_p2_req(con_t *cdown) {
                 }
                 err("s5. p2 atyp [%d] not support\n", s5p2->atyp);
                 net_free(cdown);
-                return -1;
+                return ERROR;
             }
             if (s5->s5_state == TYP_V4) {
                 s5p2->dst_addr[(int)s5p2->dst_addr_cnt++] = *p;
@@ -277,7 +277,7 @@ int s5_p2_req(con_t *cdown) {
                 if ((s5p2->dst_addr_n < 1) || (s5p2->dst_addr_n > sizeof(s5p2->dst_addr)-1)) {
                     err("s5. p2 dstaddrn err\n");
                     net_free(cdown);
-                    return -1;
+                    return ERROR;
                 }
                 s5->s5_state = TYP_DOMAIN;
                 continue;
@@ -312,7 +312,7 @@ int s5_p2_req(con_t *cdown) {
                 } while (0);
 
                 net_free(cdown);
-                return -1;
+                return ERROR;
             }
         }
     }
@@ -326,14 +326,14 @@ int s5_p1_rsp(con_t *cdown) {
     while (meta_getlen(meta) > 0) {
         int sendn = cdown->send(cdown, meta->pos, meta_getlen(meta));
         if (sendn < 0) {
-            if (sendn == -11) {
+            if (sendn == AGAIN) {
                 net_ev_set(cdown, EV_W);
                 net_timer_add(cdown, tls_session_timeout, TLS_TMOUT);
-                return -11;
+                return AGAIN;
             }
             err("s5. p1 rsp send err\n");
             net_free(cdown);
-            return -1;
+            return ERROR;
         }
         meta->pos += sendn;
     }
@@ -362,13 +362,13 @@ int s5_p1_req(con_t *cdown) {
         if (meta_getlen(meta) < 1) { /// try recv
             int recvn = cdown->recv(cdown, meta->last, meta_getfree(meta));
             if (recvn < 0) {
-                if (recvn == -11) {
+                if (recvn == AGAIN) {
                     net_timer_add(cdown, tls_session_timeout, TLS_TMOUT);
-                    return -11;
+                    return AGAIN;
                 }
                 err("s5. p1 recv err\n");
                 net_free(cdown);
-                return -1;
+                return ERROR;
             }
             meta->last += recvn;
         }
@@ -410,15 +410,15 @@ int s5_p1_req(con_t *cdown) {
 }
 
 int s5_alloc(void **data) {
-    s5_t *new_s5 = mem_pool_alloc(sizeof(s5_t));
+    s5_t *new_s5 = mem_alloc(sizeof(s5_t));
     if (new_s5) {
-        if (0 == meta_alloc(&new_s5->meta, 512)) {
+        if (OK == meta_alloc(&new_s5->meta, 512)) {
             *data = new_s5;
-            return 0;
+            return OK;
         }
-        mem_pool_free(new_s5);
+        mem_free(new_s5);
     }
-    return -1;
+    return ERROR;
 }
 
 int s5_free(void *data) {
@@ -428,8 +428,8 @@ int s5_free(void *data) {
             meta_free(s5->meta);
             s5->meta = NULL;
         }
-        mem_pool_free(s5);
+        mem_free(s5);
     }
-    return 0;
+    return OK;
 }
 

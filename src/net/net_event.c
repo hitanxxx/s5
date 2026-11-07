@@ -43,11 +43,11 @@ static ev_t *ev_wake_rd = NULL;
 
 #if defined(EVENT_EPOLL)
 static int ev_epoll_init() {
-    g_event_ctx->epev = mem_pool_alloc(sizeof(struct epoll_event) * NET_EV_MAX);
-    schk(g_event_ctx->epev, return -1);
+    g_event_ctx->epev = mem_alloc(sizeof(struct epoll_event) * NET_EV_MAX);
+    schk(g_event_ctx->epev, return ERROR);
 
     g_event_ctx->epfd = epoll_create1(0);
-    schk(g_event_ctx->epfd >= 0, return -1);
+    schk(g_event_ctx->epfd >= 0, return ERROR);
     return 0;
 }
 
@@ -56,7 +56,7 @@ static int ev_epoll_end() {
         close(g_event_ctx->epfd);
 
     if (g_event_ctx->epev)
-        mem_pool_free(g_event_ctx->epev);
+        mem_free(g_event_ctx->epev);
     return 0;
 }
 
@@ -69,7 +69,7 @@ static int ev_epoll_opt(ev_t *event, int fd, uint32_t new_mask) {
                    event->mask = EV_NONE;
                 } else {
                     err("ev. epoll_ctl err. [%d] [%s]\n", errno, strerror(errno));
-                    return -1;
+                    return ERROR;
                 }
             }
         } else {
@@ -84,13 +84,13 @@ static int ev_epoll_opt(ev_t *event, int fd, uint32_t new_mask) {
                     event->mask = new_mask;
                 } else {
                     err("ev. epoll_ctl err. [%d] [%s]\n",  errno, strerror(errno));
-                    return -1;
+                    return ERROR;
                 }
             }
         }
         event->mask = new_mask;
     }
-    return 0;
+    return OK;
 }
 
 static int ev_epoll_loop(uint64_t ms) {
@@ -99,14 +99,14 @@ static int ev_epoll_loop(uint64_t ms) {
     int all = epoll_wait(g_event_ctx->epfd, g_event_ctx->epev, NET_EV_MAX, (int)ms);
     if (all <= 0) {
         if (all == 0) {
-            return (ms == -1) ? -1 : -11;
+            return (ms == -1) ? ERROR : AGAIN;
         }
         if (errno == EINTR) {
             err("ev. epoll_wait irq by [syscall]\n");
-            return 0;
+            return OK;
         }
         err("ev. epoll_wait irq by [err], [%d] [%s]", errno, strerror(errno));
-        return -1;
+        return ERROR;
     }
 
     for (int i = 0; i < all; i++) {
@@ -131,19 +131,19 @@ static int ev_epoll_loop(uint64_t ms) {
             }
         }
     }
-    return 0;
+    return OK;
 }
 #else
 static int ev_select_init(void) {
     FD_ZERO(&g_event_ctx->rfds);
     FD_ZERO(&g_event_ctx->wfds);
-    return 0;
+    return OK;
 }
 
 static int ev_select_end(void) {
     FD_ZERO(&g_event_ctx->rfds);
     FD_ZERO(&g_event_ctx->wfds);
-    return 0;
+    return OK;
 }
 
 static int ev_select_opt(ev_t *event, int fd, uint32_t new_mask) {
@@ -164,7 +164,7 @@ static int ev_select_opt(ev_t *event, int fd, uint32_t new_mask) {
 
         event->mask = new_mask;
     }
-    return 0;
+    return OK;
 }
 
 static int ev_select_loop(uint64_t ms) {
@@ -203,14 +203,14 @@ static int ev_select_loop(uint64_t ms) {
     int actall = select(fdmax + 1, &rfds, &wfds, NULL, &tm);
     if (actall <= 0) {
         if (actall == 0) {
-            return -11;
+            return AGAIN;
         }
         if (errno == EINTR) {
             err("ev. select irq by [syscall]\n");
-            return 0;
+            return OK;
         }
         err("ev. select irq by [err], [%d] [%s]\n", errno, strerror(errno));
-        return -1;
+        return ERROR;
     }
     int processed = 0;
     q = queue_head(&g_event_ctx->evqueue);
@@ -244,7 +244,7 @@ static int ev_select_loop(uint64_t ms) {
         
         q = queue_next(q);
     }
-    return 0;
+    return OK;
 }
 #endif
 
@@ -288,20 +288,20 @@ int ev_loop(void) {
             }
         }
     }
-    return 0;
+    return OK;
 }
 
 int ev_alloc(ev_t **ev) {
     if (g_event_ctx->evn < NET_EV_MAX) {
-        ev_t *alloc_ev = mem_pool_alloc(sizeof(ev_t));
+        ev_t *alloc_ev = mem_alloc(sizeof(ev_t));
         schk(alloc_ev, return -1);
         queue_insert_tail(&g_event_ctx->evqueue, &alloc_ev->queue);
         g_event_ctx->evn ++;
         *ev = alloc_ev;
-        return 0;
+        return OK;
     } 
     err("ev number limit\n");
-    return -1;
+    return ERROR;
 }
 
 int ev_free(ev_t *ev) {
@@ -316,14 +316,14 @@ int ev_free(ev_t *ev) {
         }
         queue_remove(&ev->queue);
         g_event_ctx->evn --;
-        mem_pool_free(ev);
+        mem_free(ev);
     }
-    return 0;
+    return OK;
 }
 
 int ev_init(void) {
-    g_event_ctx = mem_pool_alloc(sizeof(g_event_t));
-    schk(g_event_ctx, return -1);
+    g_event_ctx = mem_alloc(sizeof(g_event_t));
+    schk(g_event_ctx, return ERROR);
     
 #if defined(EVENT_EPOLL)
     g_event_ops.init    = ev_epoll_init;
@@ -340,19 +340,19 @@ int ev_init(void) {
     queue_init(&g_event_ctx->evqueue);
     if (g_event_ops.init) g_event_ops.init();
     
-    schk(0 == pipe2(ev_wakefd, O_NONBLOCK), return -1);
-    schk(0 == ev_alloc(&ev_wake_rd), return -1);
+    schk(0 == pipe2(ev_wakefd, O_NONBLOCK), return ERROR);
+    schk(0 == ev_alloc(&ev_wake_rd), return ERROR);
     ev_opt(ev_wake_rd, ev_wakefd[0], EV_R);
-    return 0;
+    return OK;
 }
 
 int ev_exit(void) {
     if (g_event_ctx) {
         if (g_event_ops.end) g_event_ops.end();
-        mem_pool_free(g_event_ctx);
+        mem_free(g_event_ctx);
         g_event_ctx = NULL;
     }
     
-    return 0;
+    return OK;
 }
 

@@ -17,10 +17,10 @@ static ev_timer_t *ev_timer_minimum(void) {
 static int ev_timer_del_internal(ev_timer_t *timer) {
     if (timer->f_timeset) {
         
-        schk(heap_del(g_heap, timer->node.index) == 0, return -1);
+        schk(heap_del(g_heap, timer->node.index) == 0, return ERROR);
         timer->f_timeset = 0;
     }
-    return 0;
+    return OK;
 }
 
 int ev_timer_del(ev_timer_t *timer) {
@@ -29,14 +29,14 @@ int ev_timer_del(ev_timer_t *timer) {
         if (timer == ev_timer_minimum())
             fwake = 1;
     
-        schk(heap_del(g_heap, timer->node.index) == 0, return -1);
+        schk(heap_del(g_heap, timer->node.index) == 0, return ERROR);
         timer->f_timeset = 0;
 
         if (fwake) {
             ev_wake();
         }
     }
-    return 0;
+    return OK;
 }
 
 int ev_timer_add(ev_timer_t *timer, net_timer_cb cb, void *data, uint64_t delay_ms) {
@@ -47,13 +47,13 @@ int ev_timer_add(ev_timer_t *timer, net_timer_cb cb, void *data, uint64_t delay_
     timer->user_data = data;
     timer->delay_ms = delay_ms;
     timer->node.key = (systime_msec() + delay_ms);
-    schk(0 == heap_add(g_heap, &timer->node), return -1);
+    schk(0 == heap_add(g_heap, &timer->node), return ERROR);
     timer->f_timeset = 1;
 
     if (timer == ev_timer_minimum()) {
         ev_wake();
     }
-    return 0;
+    return OK;
 }
 
 uint64_t ev_timer_remaining(void) {
@@ -84,7 +84,7 @@ uint64_t ev_timer_remaining(void) {
 
 int ev_timer_init(void) {
     heap_create(&g_heap, NET_EV_MAX * 2);
-    return 0;
+    return OK;
 }
 
 int ev_timer_exit(void) {
@@ -92,5 +92,5 @@ int ev_timer_exit(void) {
         heap_free(g_heap);
         g_heap = NULL;
     }
-    return 0;
+    return OK;
 }

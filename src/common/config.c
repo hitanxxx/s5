@@ -40,56 +40,56 @@ static int config_valid(void) {
     }
     if (!sys_file_exist(g_config.ssl_crt_path)) {
         ahead_err("ezcfg. s5 ssl crt empty\n");
-        return -1;
+        return ERROR;
     }
     if (!sys_file_exist(g_config.ssl_key_path)) {
         ahead_err("ezcfg. s5 ssl key empty\n");
-        return -1;
+        return ERROR;
     }
     
     if (g_config.s5_mode == TLS_TUNNEL_C) {
         if (!g_config.s5_local_port) {
             ahead_err("ezcfg. s5 Client mode. local port empty\n");
-            return -1;
+            return ERROR;
         }
         if (!g_config.s5_local_serv_port) {
             ahead_err("ezcfg. s5 Client mode. server port empty\n");
-            return -1;
+            return ERROR;
         }
         if (g_config.s5_local_serv_ip[0] == 0 ||
             inet_addr(g_config.s5_local_serv_ip) == INADDR_NONE) {
             ahead_err("ezcfg. s5 Client mode. server ip illegal\n");
-            return -1;
+            return ERROR;
         }
         if (g_config.s5_local_auth[0] == 0) {
             ahead_err("ezcfg. s5 Client mode. auth info enpty\n");
-            return -1;
+            return ERROR;
         }
     } else if (g_config.s5_mode == TLS_TUNNEL_S || g_config.s5_mode == TLS_TUNNEL_S_SCRECT) {
         if (g_config.s5_mode == TLS_TUNNEL_S_SCRECT) {
             if (g_config.https_num < 1) {
                 ahead_err("ezcfg. s5 Serv screct mode. no https port\n");
-                return -1;
+                return ERROR;
             }
         } else {
             if (!g_config.s5_serv_port) {
                 ahead_err("ezccfg. s5 Serv mode. server port illegal\n");
-                return -1;
+                return ERROR;
             }
         }
         if (g_config.s5_serv_auth_path[0] == 0) {
             ahead_err("ezcfg. s5 Serv mode. auth path illegal\n");
-            return -1;
+            return ERROR;
         }
         if (g_config.s5_serv_gw[0] == 0) {
             ahead_err("ezcfg. s5 Serv mode. gw ip illegal\n");
-            return -1;
+            return ERROR;
         }
     }else {
         ahead_err("ezcfg. s5_mode not support yet (Client/Server/Server_in_screct_mode)\n");
-        return -1;
+        return ERROR;
     }
-    return 0;
+    return OK;
 }
 
 static int config_parse(char *str) {
@@ -149,10 +149,10 @@ static int config_parse(char *str) {
         cJSON_Delete(root);
     } else {
         ahead_err("cjson parse config file failed\n");
-        return -1;
+        return ERROR;
     }
 
-    return 0;
+    return OK;
 }
 
 int config_init(void) {
@@ -164,8 +164,8 @@ int config_init(void) {
     if (fdata) {
         ///ahead_dbg("config string:\n");
         ///ahead_dbg("%s", fdata->data);
-        if (0 != config_parse(fdata->data)) ret = -1;
-        if (0 != config_valid()) ret = -1;
+        if (OK != config_parse(fdata->data)) ret = -1;
+        if (OK != config_valid()) ret = -1;
         config_info();
         sys_free(fdata);
     }

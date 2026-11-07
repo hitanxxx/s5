@@ -19,7 +19,7 @@ static int log_format_prefix(log_content_t *ctx) {
         int written = (ret < (ctx->last - ctx->pos) ? ret : (ctx->last - ctx->pos - 1));
         ctx->pos += written;
     }
-    return 0;
+    return OK;
 }
 
 static int log_format_text(log_content_t *ctx) {
@@ -28,7 +28,7 @@ static int log_format_text(log_content_t *ctx) {
         int writern = (ret < (ctx->last - ctx->pos) ? ret : (ctx->last - ctx->pos - 1));
         ctx->pos += writern;
     }
-    return 0;
+    return OK;
 } 
 
 static int log_write(int fd, char *str, uint32_t strn) {
@@ -36,7 +36,7 @@ static int log_write(int fd, char *str, uint32_t strn) {
         int ret = write(fd, str, strn);
         return (ret == -1 ? -1 : 0);
     }
-    return 0;
+    return OK;
 }
 
 static int log_write_stdout(char *str, uint32_t strn) {
@@ -72,7 +72,7 @@ int log_print(int id, int level, const char *func, int line, const char *str, ..
         if (id == LOG_ID_MAIN) log_write_file_main(buffer, (int)(ctx.pos - buffer));
         if (id == LOG_ID_ACCESS) log_write_file_access(buffer, (int)(ctx.pos - buffer));
     }
-    return 0;
+    return OK;
 }
 
 int log_init(void) {
@@ -92,7 +92,7 @@ int log_init(void) {
             ahead_dbg("log access file open err. [%d]\n", errno);
             break;
         }
-        return 0;
+        return OK;
     } while (0);
 
     if (log_ctx) {
@@ -105,7 +105,7 @@ int log_init(void) {
         sys_free(log_ctx);
         log_ctx = NULL;
     }
-    return -1;
+    return ERROR;
 }
 
 int log_end(void) {
@@ -119,5 +119,5 @@ int log_end(void) {
         sys_free(log_ctx);
         log_ctx = NULL;
     }
-    return 0;
+    return OK;
 }

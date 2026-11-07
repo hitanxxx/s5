@@ -36,7 +36,7 @@ void tls_session_timeout(ev_timer_t *timer);
 void tls_session_release_by_cdown(void *data);
 void tls_session_release_by_cup(void *data);
 
-int tls_tunnel_traffic_proc(con_t *c);
+int tls_tunnel_transport(con_t *c);
 int tls_tunnel_s_start(con_t *c);
 
 int tls_tunnel_s_accept(con_t *c);

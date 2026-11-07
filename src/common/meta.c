@@ -3,13 +3,13 @@
 int meta_alloc(meta_t **meta, int datan) {
     if (meta) {
         meta_t *t = NULL;
-        schk(t = mem_pool_alloc(sizeof(meta_t) + datan), return -1);
+        schk(t = mem_alloc(sizeof(meta_t) + datan), return -1);
         t->start = t->pos = t->last = t->data;
         t->end = t->start + datan;
         *meta = t;
-        return 0;
+        return OK;
     }
-    return -1;
+    return ERROR;
 }
 
 void meta_free(meta_t *meta) {
@@ -18,7 +18,7 @@ void meta_free(meta_t *meta) {
 
     while (m) {
         n = m->next;
-        mem_pool_free(m);
+        mem_free(m);
         m = n;
     }
     return;
@@ -39,14 +39,14 @@ int meta_pdata(meta_t *meta, void *data, int datan) {
     schk(meta_getfree(meta) >= datan, return -1);
     memcpy(meta->last, data, datan);
     meta->last += datan;
-    return 0;
+    return OK;
 }
 
 int meta_pnum(meta_t *meta, unsigned char num) {
     schk(meta_getfree(meta) > 0, return -1);
     *meta->last = num;
     meta->last += 1;
-    return 0;
+    return OK;
 }
 
 meta_t *meta_dump(meta_t *meta) {
@@ -56,7 +56,7 @@ meta_t *meta_dump(meta_t *meta) {
     meta_t *cur = NULL;
     meta_t *dump = NULL;
     int dumpn = meta_getlens(meta);
-    schk(0 == meta_alloc(&dump, dumpn), return NULL);
+    schk(OK == meta_alloc(&dump, dumpn), return NULL);
 
     cur = meta;
     while (cur) {

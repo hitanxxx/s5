@@ -12,10 +12,10 @@ process_ctx_t *g_proc_ctx = NULL;
 static int proc_signal_bcast(int sig) {
     for (int i = 0; i < config_get()->sys_process_num; i++) {
         if (!g_proc_ctx->parr[i].exited) {
-            schk(0 == kill(g_proc_ctx->parr[i].pid, sig), return -1);
+            schk(0 == kill(g_proc_ctx->parr[i].pid, sig), return ERROR);
         }
     }
-    return 0;
+    return OK;
 }
 
 void proc_worker_task(void) {
@@ -25,7 +25,7 @@ void proc_worker_task(void) {
     /// worker process set the empty signal set to block. it
     /// is equal to not block any signal
 
-    mem_pool_init();
+    mem_init();
     net_init();
     
     tls_tunnel_s_init();
@@ -46,14 +46,14 @@ void proc_worker_task(void) {
     dns_end();
     
     net_exit();
-    mem_pool_deinit();
+    mem_exit();
 }
 
 static int proc_fork(process_t *process) {
     pid_t pid = fork();
     if (pid < 0) {
         err("fork syscall err, [%d]\n", errno);
-        return -1;
+        return ERROR;
     } else if (pid == 0) { /// child
         g_proc_ctx->pmaster = 0;
         g_proc_ctx->pcur = process;
@@ -62,7 +62,7 @@ static int proc_fork(process_t *process) {
     } else if (pid > 0) { /// parent
         process->pid = pid;
     }
-    return 0;
+    return OK;
 }
 
 void proc_master_task(void) {
@@ -194,9 +194,9 @@ int proc_signal_init(void) {
         sigemptyset(&sa.sa_mask);
         sa.sa_handler = proc_signal_cb;
         sa.sa_flags = SA_SIGINFO;
-        schk(0 == sigaction(sig_arr[i], &sa, NULL), return -1);
+        schk(0 == sigaction(sig_arr[i], &sa, NULL), return ERROR);
     }
-    return 0;
+    return OK;
 }
 
 int process_init(void) {
@@ -210,7 +210,7 @@ int process_init(void) {
         
         proc_signal_init();
     }
-    return 0;
+    return OK;
 }
 
 int process_end(void) {
@@ -218,5 +218,5 @@ int process_end(void) {
         sys_free(g_proc_ctx);
         g_proc_ctx = NULL;
     }
-    return 0;
+    return OK;
 }

@@ -32,15 +32,15 @@ static inline char *dns_get_serv(void) {
 static void dns_cache_timeout(ev_timer_t *timer) {
     dns_cache_record_t *cache = ev_timer_userdata(timer);
     
-    if (0 != ezhash_del(dns_ctx->dns_cache, cache->req_query, cache->req_query_len)) {
+    if (OK != ezhash_del(dns_ctx->dns_cache, cache->req_query, cache->req_query_len)) {
         err("dns cache timeout. cache hash del err\n");
     }
     if (cache->timer) ev_timer_free(cache->timer);
-    mem_pool_free(cache);
+    mem_free(cache);
 }
 
 static int dns_cache_add(char *req_query, uint32_t req_query_len, uint8_t *addr, uint64_t ms) {
-    dns_cache_record_t *cache = mem_pool_alloc(sizeof(dns_cache_record_t));
+    dns_cache_record_t *cache = mem_alloc(sizeof(dns_cache_record_t));
     if (cache) {
         cache->req_query_len = req_query_len;
         memcpy(cache->req_query, req_query, req_query_len);
@@ -50,10 +50,10 @@ static int dns_cache_add(char *req_query, uint32_t req_query_len, uint8_t *addr,
         if (0 == ezhash_add(dns_ctx->dns_cache, req_query, req_query_len, &cache, sizeof(dns_cache_record_t *))) {
             cache->timer = ev_timer_alloc_once(dns_cache_timeout, cache, ms);
         } else {
-            mem_pool_free(cache);
+            mem_free(cache);
         }
     }
-    return 0;
+    return OK;
 }
 
 static int dns_cache_find(char *req_query, uint32_t req_query_len, uint8_t *out_addr) {
@@ -62,10 +62,10 @@ static int dns_cache_find(char *req_query, uint32_t req_query_len, uint8_t *out_
         dns_cache_record_t *cache = *hash_val;
         if (cache) {
             if (out_addr) memcpy(out_addr, cache->addr, 4);
-            return 0;
+            return OK;
         }
     }
-    return -1;
+    return ERROR;
 }
 
 int dns_rsp_analyze(dnsc_t *dnsc) {
@@ -156,7 +156,7 @@ int dns_rsp_analyze(dnsc_t *dnsc) {
     }
     err("dns resolve rsp empty.\n");
     dns_resolve_result(dnsc, -1, NULL);
-    return -1;
+    return ERROR;
 }
 
 int dns_rsp_recv(con_t *c) {
@@ -167,12 +167,12 @@ int dns_rsp_recv(con_t *c) {
         int ret = c->recv(c, meta->last, meta_getfree(meta));
         if (ret <= 0) {
             if (ret == 0) {
-                 return -1;
+                 return ERROR;
             } else if (ret < 0) {
-                if (ret == -11) {
-                    return -11;
+                if (ret == AGAIN) {
+                    return AGAIN;
                 }
-                return -1;
+                return ERROR;
             }
         }
         
@@ -187,20 +187,19 @@ int dns_rsp_recv(con_t *c) {
                 if (ntohs(header->question_count) < 1) {
                     err("dns resolve rsp. question count [%d], illegal\n", header->question_count);
                     dns_resolve_result(dns, -1, NULL);
-                    return -1;
+                    return ERROR;
                 }
                 if (ntohs(header->answer_count) < 1) {
                     err("dns resolve rsp. rsp_answer count [%d], illegal\n", header->answer_count);
                     dns_resolve_result(dns, -1, NULL);
-                    return -1;
+                    return ERROR;
                 }
                 return dns_rsp_analyze(dns);
             }
             meta_clr(meta);
         }
     }
-    
-    return 0;
+    return OK;
 }
 
 static int  dns_req_send(dnsc_t *dnsc) {
@@ -212,10 +211,10 @@ static int  dns_req_send(dnsc_t *dnsc) {
             if (ret == -11) {
                 return -11;
             }
-            return -1;
+            return ERROR;
         }
     }
-    return 0;
+    return OK;
 }
 
 static int dns_req_build_qname(char *host, uint8_t *qname) {
@@ -275,7 +274,7 @@ static int dns_req_build(dnsc_t *dnsc) {
     qinfo->qtype = htons(0x0001); /// question type is IPV4
     qinfo->qclass = htons(0x0001);
     meta->last += sizeof(dns_question_t);
-    return 0;
+    return OK;
 }
 
 int dns_resolve_free(dnsc_t *dns) {
@@ -287,7 +286,7 @@ int dns_resolve_free(dnsc_t *dns) {
         
         dns->finuse = 0;
     }
-    return 0;
+    return OK;
 }
 
 static void dns_resolve_result(dnsc_t *dns, int rsp_result, uint8_t *ipv4) {
@@ -307,7 +306,7 @@ int dns_resolve(char *domain, uint32_t domain_len, dns_async_cb user_cb, void *u
     if (0 == dns_cache_find(domain, domain_len, dns->rsp_result)) {
         dns->finuse = 1;
         user_cb(0, dns->rsp_result, user_data);
-        return 0;
+        return OK;
     }
     
     dns->req_transaction_id = (dns_ctx->transaction_id ++) % (0xffff);
@@ -324,32 +323,32 @@ int dns_resolve(char *domain, uint32_t domain_len, dns_async_cb user_cb, void *u
         dns->req_timer  = ev_timer_alloc_once(dns_resolve_timeout, dns, DNS_TMOUT);
         dns->user_cb    = user_cb;
         dns->user_data  = user_data;
-        return 0;
+        return OK;
     }
 
     err("dns resolve. req_transaction_id already in use\n");
-    return -1;
+    return ERROR;
 }
 
 int dns_init(void) {
     if (!dns_ctx) {
         dns_ctx = sys_alloc(sizeof(dns_ctx_t));
-        schk(dns_ctx, return -1);
+        schk(dns_ctx, return ERROR);
         memset(dns_ctx, 0x0, sizeof(dns_ctx_t));
-        schk(0 == ezhash_create(&dns_ctx->dns_cache, 1024), return -1);
+        schk(0 == ezhash_create(&dns_ctx->dns_cache, 1024), return ERROR);
         
-        schk(0 == net_alloc(&dns_ctx->c), return -1);
+        schk(0 == net_alloc(&dns_ctx->c), return ERROR);
         dns_ctx->c->addr.sin_family = AF_INET;
         dns_ctx->c->addr.sin_port = htons(53); /// dns typicaly port: 53
         dns_ctx->c->addr.sin_addr.s_addr = inet_addr(dns_get_serv());
-        schk(0 == meta_alloc(&dns_ctx->c->meta, DNS_METAN), return -1);
+        schk(0 == meta_alloc(&dns_ctx->c->meta, DNS_METAN), return ERROR);
         
         dns_ctx->c->read_cb = dns_rsp_recv;
         dns_ctx->c->write_cb = NULL;
-        schk(0 == net_connect(dns_ctx->c, NULL, 0), return -1);
+        schk(0 == net_connect(dns_ctx->c, NULL, 0), return ERROR);
         net_ev_set(dns_ctx->c, EV_R);
     }
-    return 0;
+    return OK;
 }
 
 int dns_end(void) {
@@ -361,5 +360,5 @@ int dns_end(void) {
         sys_free(dns_ctx);
         dns_ctx = NULL;
     }
-    return 0;
+    return OK;
 }
