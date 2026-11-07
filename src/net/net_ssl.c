@@ -29,7 +29,13 @@ static g_ssl_t *g_ssl_ctx = NULL;
         if (ERR_peek_error()) {                                                \
             while ((n = ERR_peek_error())) {                                   \
                 if (p < last - 1) {                                            \
-                    ERR_error_string_n(n, (char *)p, last - p);                \
+                    size_t remain = last - p;                                  \
+                    ERR_error_string_n(n, (char *)p, remain);                  \
+                    size_t len = strlen((char*)p);                             \
+                    if (len < remain - 1) {                                    \
+                        p += len;                                              \
+                        if (p < last - 1) *p++ = '\n';                         \
+                    }                                                          \
                 }                                                              \
                 (void)ERR_get_error();                                         \
             }                                                                  \
@@ -42,8 +48,8 @@ int net_ssl_check_handshaked(con_t *c) {
     return 0;
 }
 
-int net_ssl_check_err(con_t *c) {
-    if(c->ssl && c->ssl->f_err) return 1;
+int net_ssl_check_handshake_err(con_t *c) {
+    if(c->ssl && c->ssl->f_closed) return 1;
     return 0;
 }
 
@@ -308,6 +314,7 @@ int net_ssl_handshake(con_t *c) {
 
 static int net_ssl_create_con(SSL_CTX *ctx, int flag, SSL **ssl) {
     SSL *local_ssl = NULL;
+
     schk(local_ssl = SSL_new(ctx), return -1);
     *ssl = local_ssl;
     return OK;
@@ -316,19 +323,31 @@ static int net_ssl_create_con(SSL_CTX *ctx, int flag, SSL **ssl) {
 static int net_ssl_create_ctx(SSL_CTX **ctx, int flag) {
     if (flag == L_SSL_CLIENT) {
         if (!g_ssl_ctx->ctx_client) {
-            g_ssl_ctx->ctx_client = SSL_CTX_new(TLS_client_method());
-            schk(g_ssl_ctx->ctx_client, return ERROR);
-            SSL_CTX_set_mode(g_ssl_ctx->ctx_client, SSL_MODE_AUTO_RETRY);
-            SSL_CTX_set_mode(g_ssl_ctx->ctx_client, SSL_MODE_ENABLE_PARTIAL_WRITE);
-            SSL_CTX_set_mode(g_ssl_ctx->ctx_client, SSL_MODE_ACCEPT_MOVING_WRITE_BUFFER);
-            SSL_CTX_set_options(g_ssl_ctx->ctx_client, SSL_OP_IGNORE_UNEXPECTED_EOF);
-            
-            schk(1 == SSL_CTX_set_min_proto_version(g_ssl_ctx->ctx_client, TLS1_2_VERSION), return ERROR);
-            schk(1 == SSL_CTX_set_max_proto_version(g_ssl_ctx->ctx_client, TLS1_3_VERSION), return ERROR);
+            int ret = -1;
+            do {
+                g_ssl_ctx->ctx_client = SSL_CTX_new(TLS_client_method());
+                schk(g_ssl_ctx->ctx_client, break);
 
-            ///SSL_CTX_set_verify(g_ssl_ctx->ctx_client, SSL_VERIFY_PEER, NULL);
-            ///SSL_CTX_set_default_verify_paths(g_ssl_ctx->ctx_client);
-            SSL_CTX_set_session_cache_mode(g_ssl_ctx->ctx_client, SSL_SESS_CACHE_CLIENT);
+                SSL_CTX_set_mode(g_ssl_ctx->ctx_client, SSL_MODE_AUTO_RETRY);
+                SSL_CTX_set_mode(g_ssl_ctx->ctx_client, SSL_MODE_ENABLE_PARTIAL_WRITE);
+                SSL_CTX_set_mode(g_ssl_ctx->ctx_client, SSL_MODE_ACCEPT_MOVING_WRITE_BUFFER);
+                SSL_CTX_set_options(g_ssl_ctx->ctx_client, SSL_OP_IGNORE_UNEXPECTED_EOF);
+
+                schk(1 == SSL_CTX_set_min_proto_version(g_ssl_ctx->ctx_client, TLS1_2_VERSION), break);
+                schk(1 == SSL_CTX_set_max_proto_version(g_ssl_ctx->ctx_client, TLS1_3_VERSION), break);
+
+                ///SSL_CTX_set_verify(g_ssl_ctx->ctx_client, SSL_VERIFY_PEER, NULL);
+                ///SSL_CTX_set_default_verify_paths(g_ssl_ctx->ctx_client);
+                SSL_CTX_set_session_cache_mode(g_ssl_ctx->ctx_client, SSL_SESS_CACHE_CLIENT);
+                ret = 0;
+            } while (0);
+            if (ret != 0) {
+                if (g_ssl_ctx->ctx_client) {
+                    SSL_CTX_free(g_ssl_ctx->ctx_client);
+                    g_ssl_ctx->ctx_client = NULL;
+                }
+                return ERROR;
+            }
         }
         *ctx = g_ssl_ctx->ctx_client;
     } else {
@@ -336,29 +355,29 @@ static int net_ssl_create_ctx(SSL_CTX **ctx, int flag) {
             int ret = -1;
             do {
                 g_ssl_ctx->ctx_server = SSL_CTX_new(TLS_server_method());
-                schk(g_ssl_ctx->ctx_server, return ERROR);
+                schk(g_ssl_ctx->ctx_server, break);
                 SSL_CTX_set_mode(g_ssl_ctx->ctx_server, SSL_MODE_AUTO_RETRY);
                 SSL_CTX_set_mode(g_ssl_ctx->ctx_server, SSL_MODE_ENABLE_PARTIAL_WRITE);
                 SSL_CTX_set_mode(g_ssl_ctx->ctx_server, SSL_MODE_ACCEPT_MOVING_WRITE_BUFFER);
                 SSL_CTX_set_options(g_ssl_ctx->ctx_server, SSL_OP_IGNORE_UNEXPECTED_EOF);
 
-                schk(1 == SSL_CTX_set_min_proto_version(g_ssl_ctx->ctx_server, TLS1_2_VERSION), return ERROR);
-                schk(1 == SSL_CTX_set_max_proto_version(g_ssl_ctx->ctx_server, TLS1_3_VERSION), return ERROR);
+                schk(1 == SSL_CTX_set_min_proto_version(g_ssl_ctx->ctx_server, TLS1_2_VERSION), break);
+                schk(1 == SSL_CTX_set_max_proto_version(g_ssl_ctx->ctx_server, TLS1_3_VERSION), break);
                 schk(1 == SSL_CTX_set_cipher_list(g_ssl_ctx->ctx_server,
                             "ECDHE-ECDSA-AES128-GCM-SHA256:"
                             "ECDHE-RSA-AES128-GCM-SHA256:"
                             "ECDHE-ECDSA-AES256-GCM-SHA384:"
-                            "ECDHE-RSA-AES256-GCM-SHA384"), return ERROR);
+                            "ECDHE-RSA-AES256-GCM-SHA384"), break);
                 
                 #if defined(__x86_64__)
                 schk(1 == SSL_CTX_set_ciphersuites(g_ssl_ctx->ctx_server,
                             "TLS_AES_128_GCM_SHA256:"
                             "TLS_AES_256_GCM_SHA384:"
-                            "TLS_CHACHA20_POLY1305_SHA256"), return ERROR);
+                            "TLS_CHACHA20_POLY1305_SHA256"), break);
                 #elif defined(__arm__)
                 ///tls 1.3
                 schk(1 == SSL_CTX_set_ciphersuites(g_ssl_ctx->ctx_server,
-                             "TLS_CHACHA20_POLY1305_SHA256"), return ERROR);
+                             "TLS_CHACHA20_POLY1305_SHA256"), break);
                 ///tls 1.2
                 schk(1 == SSL_CTX_set_cipher_list(g_ssl_ctx->ctx_server,
                             "ECDHE-ECDSA-AES128-GCM-SHA256:"
@@ -380,8 +399,10 @@ static int net_ssl_create_ctx(SSL_CTX **ctx, int flag) {
             } while (0);
 
             if (ret != 0) {
-                SSL_CTX_free(g_ssl_ctx->ctx_server);
-                g_ssl_ctx->ctx_server = NULL;
+                if (g_ssl_ctx->ctx_server) {
+                    SSL_CTX_free(g_ssl_ctx->ctx_server);
+                    g_ssl_ctx->ctx_server = NULL;
+                }
                 return ERROR;
             }
         }

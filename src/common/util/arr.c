@@ -8,7 +8,7 @@ int mem_arr_create(mem_arr_t **list, int size) {
     narr->elem_size = size;
     narr->elem_num = 0;
     *list = narr;
-    return 0;
+    return OK;
 }
 
 void *mem_arr_push(mem_arr_t *list) {
@@ -37,7 +37,7 @@ int mem_arr_free(mem_arr_t *list) {
         cur = next;
     }
     mem_free(list);
-    return 0;
+    return OK;
 }
 
 void *mem_arr_get(mem_arr_t *list, int index) {

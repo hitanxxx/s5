@@ -5,8 +5,6 @@
 
 #include "arr.h"
 #include "bheap.h"
-#include "bst.h"
-#include "list.h"
 #include "queue.h"
 #include "meta.h"
 #include "mem.h"

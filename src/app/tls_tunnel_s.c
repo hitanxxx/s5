@@ -428,7 +428,7 @@ int tls_tunnel_s_accept(con_t *cdown) {
         }
     }
 
-    if (net_ssl_check_err(cdown)) {
+    if (net_ssl_check_handshake_err(cdown)) {
         err("tls tunnel. ssl handshake err\n");
         net_free(cdown);
         return ERROR;

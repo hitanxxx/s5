@@ -14,21 +14,21 @@ int heap_create(heap_t **heap, uint32_t size) {
     nheap->index = 0;
     nheap->array[0] = NULL;
     *heap = nheap;
-    return 0;
+    return OK;
 }
 
 int heap_free(heap_t *heap) {
     if (heap) {
         sys_free(heap);
     }
-    return 0;
+    return OK;
 }
 
 int heap_add(heap_t *heap, heap_node_t *node) {
     uint32_t i = 0;
     /// out of space
     if (heap->index >= heap->space)
-        return -1;
+        return ERROR;
 
     heap->index++;
     i = heap->index;
@@ -41,7 +41,7 @@ int heap_add(heap_t *heap, heap_node_t *node) {
     }
     heap->array[i] = node;
     heap->array[i]->index = i;
-    return 0;
+    return OK;
 }
 
 int heap_del(heap_t *heap, uint32_t del_index) {
@@ -50,9 +50,9 @@ int heap_del(heap_t *heap, uint32_t del_index) {
     heap_node_t *tail_node;
 
     if (heap_empty(heap))
-        return -1;
+        return ERROR;
     if (del_index > heap->index || del_index == 0)
-        return -1;
+        return ERROR;
 
     tail_node = heap->array[heap->index];
     heap->index--;
@@ -79,7 +79,7 @@ int heap_del(heap_t *heap, uint32_t del_index) {
     }
     heap->array[i] = tail_node;
     heap->array[i]->index = i;
-    return 0;
+    return OK;
 }
 
 int heap_empty(heap_t *heap) {

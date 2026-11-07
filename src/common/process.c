@@ -25,21 +25,24 @@ void proc_worker_task(void) {
     /// worker process set the empty signal set to block. it
     /// is equal to not block any signal
 
-    mem_init();
-    net_init();
-    
-    tls_tunnel_s_init();
-    tls_tunnel_c_init();
-    webser_init();
-    dns_init(); 
-    
-    for (;;) {
-        if (g_proc_ctx->sig_quit) {
-            g_proc_ctx->sig_quit = 0;
-            break;
+    do {
+        schk(OK == mem_init(), break);
+        schk(OK == net_init(), break);
+        
+        schk(OK == tls_tunnel_s_init(), break);
+        schk(OK == tls_tunnel_c_init(), break);
+        schk(OK == webser_init(), break);
+        schk(OK == dns_init(), break);
+        
+        for (;;) {
+            if (g_proc_ctx->sig_quit) {
+                g_proc_ctx->sig_quit = 0;
+                break;
+            }
+            net_ev_loop();
         }
-        net_ev_loop();
-    }
+    } while (0);
+    
     tls_tunnel_s_exit();
     tls_tunnel_c_exit();
     webser_end();

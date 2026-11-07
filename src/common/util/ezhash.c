@@ -20,12 +20,12 @@ int ezhash_create(ezhash_t **out, uint32_t space) {
             for (int i = 0; i < space; i++) queue_init(&hash->arr[i]);
             hash->hash_func = fnv1a_32;
             *out = hash;
-            return 0;
+            return OK;
         } else {
             mem_free(hash);
         }
     }
-    return -1;
+    return ERROR;
 }
 
 int ezhash_free(ezhash_t *hash) {
@@ -51,7 +51,7 @@ int ezhash_free(ezhash_t *hash) {
         mem_free(hash->arr);
         mem_free(hash);
     }
-    return 0;
+    return OK;
 }
 
 int ezhash_del(ezhash_t *hash, void *key, uint32_t keyn) {
@@ -75,7 +75,7 @@ int ezhash_del(ezhash_t *hash, void *key, uint32_t keyn) {
             p = n;
         }
     }
-    return ((del_cont > 0) ? 0 : -1);
+    return ((del_cont > 0) ? OK : ERROR);
 }
 
 void *ezhash_find(ezhash_t *hash, void *key, uint32_t keyn) {
@@ -100,7 +100,7 @@ void *ezhash_find(ezhash_t *hash, void *key, uint32_t keyn) {
 
 int ezhash_add(ezhash_t *hash, void *key, uint32_t keyn, void *val, uint32_t valn) {
     if (ezhash_find(hash, key, keyn)) {
-        return -1;
+        return ERROR;
     }
 
     uint32_t idx = (hash->hash_func(key, keyn) % hash->arrn);
@@ -108,7 +108,7 @@ int ezhash_add(ezhash_t *hash, void *key, uint32_t keyn, void *val, uint32_t val
     ezhash_obj_t *obj = mem_alloc(sizeof(ezhash_obj_t));
     if (!obj) {
         err("alloc new hash obj err. [%d]\n", errno);
-        return -1;
+        return ERROR;
     }
     
     obj->keyn = keyn;
@@ -117,18 +117,18 @@ int ezhash_add(ezhash_t *hash, void *key, uint32_t keyn, void *val, uint32_t val
     if (!obj->key) {
         err("alloc new hash obj's key space err. [%d]\n", errno);
         mem_free(obj);
-        return -1;
+        return ERROR;
     }
     obj->val = mem_alloc(valn);
     if (!obj->val) {
         err("alloc new hash obj's val space err. [%d]\n", errno);
         mem_free(obj->key);
         mem_free(obj);
-        return -1;
+        return ERROR;
     }
     memcpy(obj->key, key, keyn);
     memcpy(obj->val, val, valn);
 
     queue_insert_tail(&hash->arr[idx], &obj->queue);
-    return 0;
+    return OK;
 }

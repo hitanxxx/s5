@@ -528,7 +528,7 @@ int webser_accept_cb_ssl(con_t *c) {
         });
     }
 
-    if (net_ssl_check_err(c)) {
+    if (net_ssl_check_handshake_err(c)) {
         err("web. ssl handshake err\n");
         net_free(c);
         return ERROR;

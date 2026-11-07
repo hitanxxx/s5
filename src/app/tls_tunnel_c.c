@@ -102,7 +102,7 @@ static int tls_tunnel_c_connect_ssl(con_t *cup) {
         }
     }
 
-    if (net_ssl_check_err(cup)) {
+    if (net_ssl_check_handshake_err(cup)) {
         err("tls tunnel. ssl handshake err\n");
         net_free(cup);
         net_free(session->cdown);

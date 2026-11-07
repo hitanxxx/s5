@@ -54,6 +54,7 @@ struct net_connection_t {
 
     net_ev_cb read_cb;
     net_ev_cb write_cb;
+    net_ev_cb accept_cb;
     
     net_ssl_t *ssl;
     
@@ -93,7 +94,7 @@ int net_ssl_create(con_t *c, int flag);
 int net_ssl_shutdown(con_t *c);
 int net_ssl_handshake(con_t *c);
 int net_ssl_check_handshaked(con_t *c);
-int net_ssl_check_err(con_t *c);
+int net_ssl_check_handshake_err(con_t *c);
 
 
 

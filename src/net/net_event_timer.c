@@ -40,9 +40,11 @@ int ev_timer_del(ev_timer_t *timer) {
 }
 
 int ev_timer_add(ev_timer_t *timer, net_timer_cb cb, void *data, uint64_t delay_ms) {
-    if (timer->f_timeset)
-        ev_timer_del(timer);
+    if (timer->f_timeset) {
+        schk(OK == ev_timer_del(timer), return ERROR);
+    }
 
+    if (delay_ms == 0) delay_ms = 1;
     timer->cb = cb;
     timer->user_data = data;
     timer->delay_ms = delay_ms;
@@ -66,12 +68,12 @@ uint64_t ev_timer_remaining(void) {
                 break;
             } else {
                 ev_timer_del_internal(timer);
-                if (!timer->f_once) {
-                    ev_timer_add(timer, timer->cb, timer->user_data, timer->delay_ms);
-                }
-                
                 if (timer->cb) {
                     timer->cb(timer);
+                }
+                
+                if (!timer->f_once) {
+                    ev_timer_add(timer, timer->cb, timer->user_data, timer->delay_ms);
                 }
             }
         } else {
@@ -83,7 +85,7 @@ uint64_t ev_timer_remaining(void) {
 }
 
 int ev_timer_init(void) {
-    heap_create(&g_heap, NET_EV_MAX * 2);
+    schk(OK == heap_create(&g_heap, NET_EV_MAX * 2), return ERROR);
     return OK;
 }
 

@@ -101,6 +101,8 @@ static int net_io_send(con_t *c, uint8_t *buf, uint32_t bufn) {
                 err("net send err. [%d] [%s]\n", errno, strerror(errno));
                 return ERROR;
             }
+        } else if (rc == 0) {
+            return ERROR;
         }
         return rc;
     };
@@ -278,10 +280,12 @@ static int net_accept(con_t *c) {
         new_con->send_chain = net_io_send_chain;
         new_con->fssl = c->fssl;
 
-        new_con->read_cb = (net_ev_cb)c->user_data;
+        new_con->read_cb = c->accept_cb;
         new_con->write_cb = NULL;
         net_ev_set(new_con, EV_R);
-        net_timer_add(new_con, net_free_timeout, NET_TMOUT);
+        if (OK != net_timer_add(new_con, net_free_timeout, NET_TMOUT)) {
+            net_free(new_con);
+        }
     }
     return OK;
 }
@@ -304,7 +308,7 @@ int net_listen(net_ev_cb cb, struct sockaddr_in *addr, uint8_t fssl) {
 
         c->read_cb = net_accept;
         c->write_cb = NULL;
-        c->user_data = (void*)cb;
+        c->accept_cb = cb;
         c->free_user_data = NULL;
         c->fssl = (fssl ? 1 : 0);
         net_ev_set(c, EV_R);
@@ -312,7 +316,7 @@ int net_listen(net_ev_cb cb, struct sockaddr_in *addr, uint8_t fssl) {
     } while (0);
 
     if (c) net_free(c);
-    return OK;
+    return ERROR;
 }
 
 void net_free_thorough(con_t *c) {
@@ -401,9 +405,9 @@ int net_alloc(con_t **c) {
 }
 
 int net_init(void) {
-    ev_timer_init();
-    ev_init();
-    net_ssl_init();
+    schk(OK == ev_timer_init(), return ERROR);
+    schk(OK == ev_init(), return ERROR);
+    schk(OK == net_ssl_init(), return ERROR);
     return OK;
 }
 
