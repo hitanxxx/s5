@@ -297,6 +297,7 @@ int ev_alloc(ev_t **ev) {
         schk(alloc_ev, return -1);
         queue_insert_tail(&g_event_ctx->evqueue, &alloc_ev->queue);
         g_event_ctx->evn ++;
+        alloc_ev->idxr = alloc_ev->idxw = -1;
         *ev = alloc_ev;
         return OK;
     } 
@@ -306,11 +307,11 @@ int ev_alloc(ev_t **ev) {
 
 int ev_free(ev_t *ev) {
     if (ev) {
-        if ((ev->idxr != -1) && (ev->idxr < EV_MAP_MAX)) {
+        if ((ev->idxr != -1) && (ev->idxr < EV_MAP_MAX) && g_event_ctx->ev_map[ev->idxr] == ev) {
             g_event_ctx->ev_map[ev->idxr] = NULL;
             ev->idxr = -1;
         }
-        if ((ev->idxw != -1) && (ev->idxw < EV_MAP_MAX)) {
+        if ((ev->idxw != -1) && (ev->idxw < EV_MAP_MAX) && g_event_ctx->ev_map[ev->idxw] == ev) {
             g_event_ctx->ev_map[ev->idxw] = NULL;
             ev->idxw = -1;
         }

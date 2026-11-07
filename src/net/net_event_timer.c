@@ -14,24 +14,15 @@ static ev_timer_t *ev_timer_minimum(void) {
     return NULL;
 }
 
-static int ev_timer_del_internal(ev_timer_t *timer) {
-    if (timer->f_timeset) {
-        
-        schk(heap_del(g_heap, timer->node.index) == 0, return ERROR);
-        timer->f_timeset = 0;
-    }
-    return OK;
-}
-
 int ev_timer_del(ev_timer_t *timer) {
     if (timer->f_timeset) {
         uint8_t fwake = 0;
         if (timer == ev_timer_minimum())
             fwake = 1;
-    
+        
         schk(heap_del(g_heap, timer->node.index) == 0, return ERROR);
         timer->f_timeset = 0;
-
+        
         if (fwake) {
             ev_wake();
         }
@@ -67,13 +58,19 @@ uint64_t ev_timer_remaining(void) {
                 timestamp = (timer->node.key - systime_msec());
                 break;
             } else {
-                ev_timer_del_internal(timer);
-                if (timer->cb) {
-                    timer->cb(timer);
-                }
-                
-                if (!timer->f_once) {
+                uint8_t f_once = timer->f_once;
+                if (f_once) {
+                    ///delete + porcess callback
+                    ev_timer_del(timer);
+                    if (timer->cb) {
+                        timer->cb(timer);   ///The timer may be released during the callback
+                    }
+                } else {
+                    ///refresh + porcess callback
                     ev_timer_add(timer, timer->cb, timer->user_data, timer->delay_ms);
+                    if (timer->cb) {
+                        timer->cb(timer);   ///The timer may be released during the callback
+                    }
                 }
             }
         } else {

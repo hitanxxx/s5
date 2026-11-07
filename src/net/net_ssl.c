@@ -420,7 +420,7 @@ int net_ssl_create(con_t *c, int flag) {
         schk(sslc, return ERROR);
         schk(net_ssl_create_ctx(&sslc->session_ctx, flag) == OK, break);
         schk(net_ssl_create_con(sslc->session_ctx, flag, &sslc->con) == OK, break);
-        schk(SSL_set_fd(sslc->con, c->fd) != OK, break);
+        schk(SSL_set_fd(sslc->con, c->fd) == 1, break);
         if (flag == L_SSL_SERVER) {
             SSL_set_accept_state(sslc->con);
         } else {

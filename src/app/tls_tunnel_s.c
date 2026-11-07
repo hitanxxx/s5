@@ -490,7 +490,7 @@ int tls_tunnel_s_init(void) {
             addr.sin_port = htons(config_get()->s5_serv_port);
             addr.sin_addr.s_addr = htonl(INADDR_ANY);
             
-            net_listen(tls_tunnel_s_accept,    &addr, 1);
+            schk(OK == net_listen(tls_tunnel_s_accept, &addr, 1), return ERROR);
         }
     }
     return OK;

@@ -633,7 +633,7 @@ int webser_init(void) {
             addr.sin_port = htons(config_get()->http_arr[i]);
             addr.sin_addr.s_addr = htonl(INADDR_ANY);
             
-            net_listen(webser_accept_cb,    &addr, 0);
+            schk(OK == net_listen(webser_accept_cb, &addr, 0), return ERROR);
         }
         
         for (int i = 0; i < config_get()->https_num; i++) {
@@ -643,7 +643,7 @@ int webser_init(void) {
             addr.sin_port = htons(config_get()->https_arr[i]);
             addr.sin_addr.s_addr = htonl(INADDR_ANY);
             
-            net_listen(webser_accept_cb_ssl,    &addr, 1);
+            schk(OK == net_listen(webser_accept_cb_ssl, &addr, 1), return ERROR);
         }
         ret = 0;
     } while (0);

@@ -203,7 +203,7 @@ int tls_tunnel_c_init(void) {
         addr.sin_family = AF_INET;
         addr.sin_port = htons(config_get()->s5_local_port);
         addr.sin_addr.s_addr = htonl(INADDR_ANY);
-        net_listen(tls_tunnel_c_accept,    &addr, 0);
+        schk(OK == net_listen(tls_tunnel_c_accept, &addr, 0), return ERROR);
     }
     return OK;
 }
