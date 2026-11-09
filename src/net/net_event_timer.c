@@ -54,24 +54,16 @@ uint64_t ev_timer_remaining(void) {
     for (;;) {
         ev_timer_t *timer = ev_timer_minimum();
         if (timer) {
-            if (timer->node.key > systime_msec()) {
+            if (timer->node.key >= systime_msec()) {
                 timestamp = (timer->node.key - systime_msec());
                 break;
             } else {
-                uint8_t f_once = timer->f_once;
-                if (f_once) {
-                    ///delete + porcess callback
-                    ev_timer_del(timer);
-                    if (timer->cb) {
-                        timer->cb(timer);   ///The timer may be released during the callback
-                    }
+                if (timer->f_once) {
+                    ev_timer_del(timer);    ///del timer 
                 } else {
-                    ///refresh + porcess callback
-                    ev_timer_add(timer, timer->cb, timer->user_data, timer->delay_ms);
-                    if (timer->cb) {
-                        timer->cb(timer);   ///The timer may be released during the callback
-                    }
+                    ev_timer_add(timer, timer->cb, timer->user_data, timer->delay_ms);  ///refresh timer
                 }
+                if (timer->cb) timer->cb(timer);
             }
         } else {
             timestamp = -1;

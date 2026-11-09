@@ -22,9 +22,6 @@ typedef struct {
     uint32_t evn;       ///total event number
     queue_t evqueue;    ///total event queue
     
-    uint32_t ev_mapn;               ///event rw map number 
-    ev_t *ev_map[EV_MAP_MAX];  ///event rw map 
-    
 #if defined(EVENT_EPOLL)
     int epfd;
     struct epoll_event *epev;
@@ -94,8 +91,6 @@ static int ev_epoll_opt(ev_t *event, int fd, uint32_t new_mask) {
 }
 
 static int ev_epoll_loop(uint64_t ms) {
-    g_event_ctx->ev_mapn = 0;
-
     int all = epoll_wait(g_event_ctx->epfd, g_event_ctx->epev, NET_EV_MAX, (int)ms);
     if (all <= 0) {
         if (all == 0) {
@@ -112,22 +107,27 @@ static int ev_epoll_loop(uint64_t ms) {
     for (int i = 0; i < all; i++) {
         ev_t *ev = g_event_ctx->epev[i].data.ptr;
         uint32_t revents = g_event_ctx->epev[i].events;
-        
-        ev->idxr = ev->idxw = -1;
         ev->fread = ev->fwrite  = 0;
         
         if (revents & (EPOLLIN | EPOLLRDHUP | EPOLLHUP | EPOLLERR)) {
             ev->fread = 1;
-            if (g_event_ctx->ev_mapn < (EV_MAP_MAX - 1)) {
-                ev->idxr = g_event_ctx->ev_mapn++;
-                g_event_ctx->ev_map[ev->idxr] = ev;
-            }
         }
         if (revents & (EPOLLOUT | EPOLLHUP | EPOLLERR)) {
             ev->fwrite = 1;
-            if (g_event_ctx->ev_mapn < (EV_MAP_MAX - 1)) {
-                ev->idxw = g_event_ctx->ev_mapn++;
-                g_event_ctx->ev_map[ev->idxw] = ev;
+        }
+
+        if (ev->fread) {
+            ev->fread = 0;
+            if (ev->data) {
+                con_t *c = (con_t*)ev->data;
+                if (c->read_cb) c->read_cb(c);
+            }
+        } 
+        if (ev->fwrite) {
+            ev->fwrite = 0;
+            if (ev->data) {
+                con_t *c = (con_t*) ev->data;
+                if (c->write_cb) c->write_cb(c);
             }
         }
     }
@@ -168,8 +168,6 @@ static int ev_select_opt(ev_t *event, int fd, uint32_t new_mask) {
 }
 
 static int ev_select_loop(uint64_t ms) {
-    g_event_ctx->ev_mapn = 0;
-
     int fdmax = ev_wakefd[0];
     ev_t *ev = NULL;
     queue_t *q = NULL;
@@ -216,31 +214,38 @@ static int ev_select_loop(uint64_t ms) {
     q = queue_head(&g_event_ctx->evqueue);
     while (q != queue_tail(&g_event_ctx->evqueue) && processed < actall) {
         ev = ptr_get_struct(q, ev_t, queue);
-        ev->idxr = ev->idxw = 0;
 
         if ((ev == ev_wake_rd) && FD_ISSET(ev_wakefd[0], &rfds)) {
             processed ++;
             ev->fread = 1;
-            ev->idxr = g_event_ctx->ev_mapn++;
-            if (ev->idxr < EV_MAP_MAX) g_event_ctx->ev_map[ev->idxr] = ev;
-            continue;
-        } 
+        } else {
+            if (ev->data) {
+                con_t *c= ev->data;
+                if (FD_ISSET(c->fd, &rfds)) {
+                    processed ++;
+                    ev->fread = 1;
+                }
+                if (FD_ISSET(c->fd, &wfds)) {
+                    processed ++;
+                    ev->fwrite = 1;
+                }
+            }
+        }
         
-        if (ev->data) {
-            con_t *c= ev->data;
-            if (FD_ISSET(c->fd, &rfds)) {
-                processed ++;
-                ev->fread = 1;
-                ev->idxr = g_event_ctx->ev_mapn++;
-                if (ev->idxr < EV_MAP_MAX) g_event_ctx->ev_map[ev->idxr] = ev;
-            }
-            if (FD_ISSET(c->fd, &wfds)) {
-                processed ++;
-                ev->fwrite = 1;
-                ev->idxw = g_event_ctx->ev_mapn++;
-                if (ev->idxw < EV_MAP_MAX) g_event_ctx->ev_map[ev->idxw] = ev;
+        if (ev->fread) {
+            ev->fread = 0;
+            if (ev->data) {
+                con_t *c = (con_t*)ev->data;
+                if (c->read_cb) c->read_cb(c);
             }
         } 
+        if (ev->fwrite) {
+            ev->fwrite = 0;
+            if (ev->data) {
+                con_t *c = (con_t*) ev->data;
+                if (c->write_cb) c->write_cb(c);
+            }
+        }
         
         q = queue_next(q);
     }
@@ -263,31 +268,6 @@ int ev_opt(ev_t *event, int fd, uint32_t new_mask) {
 int ev_loop(void) {
     if (g_event_ops.loop) g_event_ops.loop(ev_timer_remaining());
     systime_update();
-    
-    for (int i = 0; i < g_event_ctx->ev_mapn; i++) {
-        if (g_event_ctx->ev_map[i]) {
-            ev_t *ev = g_event_ctx->ev_map[i];
-            if (ev == ev_wake_rd) {
-                uint8_t val;
-                while (read(ev_wakefd[0], &val, sizeof(val)) > 0) {}
-                continue;
-            }
-            
-            if (ev->fread) {
-                ev->fread = 0;
-                if (ev->data) {
-                    con_t *c = (con_t*)ev->data;
-                    if (c->read_cb) c->read_cb(c);
-                }
-            } else if (ev->fwrite) {
-                ev->fwrite = 0;
-                if (ev->data) {
-                    con_t *c = (con_t*) ev->data;
-                    if (c->write_cb) c->write_cb(c);
-                }
-            }
-        }
-    }
     return OK;
 }
 
@@ -297,7 +277,6 @@ int ev_alloc(ev_t **ev) {
         schk(alloc_ev, return -1);
         queue_insert_tail(&g_event_ctx->evqueue, &alloc_ev->queue);
         g_event_ctx->evn ++;
-        alloc_ev->idxr = alloc_ev->idxw = -1;
         *ev = alloc_ev;
         return OK;
     } 
@@ -307,14 +286,7 @@ int ev_alloc(ev_t **ev) {
 
 int ev_free(ev_t *ev) {
     if (ev) {
-        if ((ev->idxr != -1) && (ev->idxr < EV_MAP_MAX) && g_event_ctx->ev_map[ev->idxr] == ev) {
-            g_event_ctx->ev_map[ev->idxr] = NULL;
-            ev->idxr = -1;
-        }
-        if ((ev->idxw != -1) && (ev->idxw < EV_MAP_MAX) && g_event_ctx->ev_map[ev->idxw] == ev) {
-            g_event_ctx->ev_map[ev->idxw] = NULL;
-            ev->idxw = -1;
-        }
+        ev->fread = ev->fwrite = 0;
         queue_remove(&ev->queue);
         g_event_ctx->evn --;
         mem_free(ev);
