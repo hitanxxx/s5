@@ -54,7 +54,7 @@ uint64_t ev_timer_remaining(void) {
     for (;;) {
         ev_timer_t *timer = ev_timer_minimum();
         if (timer) {
-            if (timer->node.key >= systime_msec()) {
+            if (timer->node.key > systime_msec()) {
                 timestamp = (timer->node.key - systime_msec());
                 break;
             } else {

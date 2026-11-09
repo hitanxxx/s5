@@ -120,14 +120,14 @@ static int ev_epoll_loop(uint64_t ms) {
             ev->fread = 0;
             if (ev->data) {
                 con_t *c = (con_t*)ev->data;
-                if (c->read_cb) c->read_cb(c);
+                if (!c->fclosing && c->read_cb) c->read_cb(c);
             }
         } 
         if (ev->fwrite) {
             ev->fwrite = 0;
             if (ev->data) {
                 con_t *c = (con_t*) ev->data;
-                if (c->write_cb) c->write_cb(c);
+                if (!c->fclosing && c->write_cb) c->write_cb(c);
             }
         }
     }
@@ -236,14 +236,14 @@ static int ev_select_loop(uint64_t ms) {
             ev->fread = 0;
             if (ev->data) {
                 con_t *c = (con_t*)ev->data;
-                if (c->read_cb) c->read_cb(c);
+                if (!c->fclosing && c->read_cb) c->read_cb(c);
             }
         } 
         if (ev->fwrite) {
             ev->fwrite = 0;
             if (ev->data) {
                 con_t *c = (con_t*) ev->data;
-                if (c->write_cb) c->write_cb(c);
+                if (!c->fclosing && c->write_cb) c->write_cb(c);
             }
         }
         
