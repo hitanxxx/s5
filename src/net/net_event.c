@@ -34,9 +34,6 @@ typedef struct {
 static g_event_t *g_event_ctx = NULL;
 static net_event_ops_t g_event_ops = {NULL, NULL, NULL, NULL};
 
-static int ev_wakefd[2] = {0};
-static ev_t *ev_wake_rd = NULL;
-
 
 #if defined(EVENT_EPOLL)
 static int ev_epoll_init() {
@@ -120,14 +117,18 @@ static int ev_epoll_loop(uint64_t ms) {
             ev->fread = 0;
             if (ev->data) {
                 con_t *c = (con_t*)ev->data;
-                if (!c->fclosing && c->read_cb) c->read_cb(c);
+                if (!c->fclosing && c->read_cb) {
+                    c->read_cb(c);
+                }
             }
         } 
         if (ev->fwrite) {
             ev->fwrite = 0;
             if (ev->data) {
                 con_t *c = (con_t*) ev->data;
-                if (!c->fclosing && c->write_cb) c->write_cb(c);
+                if (!c->fclosing && c->write_cb) {
+                    c->write_cb(c);
+                }
             }
         }
     }
@@ -168,7 +169,7 @@ static int ev_select_opt(ev_t *event, int fd, uint32_t new_mask) {
 }
 
 static int ev_select_loop(uint64_t ms) {
-    int fdmax = ev_wakefd[0];
+    int fdmax = 0;
     ev_t *ev = NULL;
     queue_t *q = NULL;
     queue_t *n = NULL;
@@ -187,10 +188,9 @@ static int ev_select_loop(uint64_t ms) {
             n = queue_next(q);
             
             ev = ptr_get_struct(q, ev_t, queue);
-            if (ev != ev_wake_rd) {
+            
                 con_t *c = ev->data;
-                if (c && c->fd > fdmax) fdmax = c->fd;
-            }
+            if (c && c->fd > fdmax) fdmax = c->fd;
             
             q = n;
         }
@@ -215,20 +215,15 @@ static int ev_select_loop(uint64_t ms) {
     while (q != queue_tail(&g_event_ctx->evqueue) && processed < actall) {
         ev = ptr_get_struct(q, ev_t, queue);
 
-        if ((ev == ev_wake_rd) && FD_ISSET(ev_wakefd[0], &rfds)) {
-            processed ++;
-            ev->fread = 1;
-        } else {
-            if (ev->data) {
-                con_t *c= ev->data;
-                if (FD_ISSET(c->fd, &rfds)) {
-                    processed ++;
-                    ev->fread = 1;
-                }
-                if (FD_ISSET(c->fd, &wfds)) {
-                    processed ++;
-                    ev->fwrite = 1;
-                }
+        if (ev->data) {
+            con_t *c= ev->data;
+            if (FD_ISSET(c->fd, &rfds)) {
+                processed ++;
+                ev->fread = 1;
+            }
+            if (FD_ISSET(c->fd, &wfds)) {
+                processed ++;
+                ev->fwrite = 1;
             }
         }
         
@@ -236,14 +231,18 @@ static int ev_select_loop(uint64_t ms) {
             ev->fread = 0;
             if (ev->data) {
                 con_t *c = (con_t*)ev->data;
-                if (!c->fclosing && c->read_cb) c->read_cb(c);
+                if (!c->fclosing && c->read_cb) {
+                    c->read_cb(c);
+                }
             }
         } 
         if (ev->fwrite) {
             ev->fwrite = 0;
             if (ev->data) {
                 con_t *c = (con_t*) ev->data;
-                if (!c->fclosing && c->write_cb) c->write_cb(c);
+                if (!c->fclosing && c->write_cb) {
+                    c->write_cb(c);
+                }
             }
         }
         
@@ -253,13 +252,6 @@ static int ev_select_loop(uint64_t ms) {
 }
 #endif
 
-void ev_wake(void) {
-    uint8_t feed = 0x1;
-    if (1 != write(ev_wakefd[1], &feed, sizeof(feed))) {
-        err("net event wake write err. [%d]\n", errno);
-    }
-    return;
-}
 
 int ev_opt(ev_t *event, int fd, uint32_t new_mask) {
     return (g_event_ops.opt ? g_event_ops.opt(event, fd, new_mask) : 0);
@@ -313,9 +305,6 @@ int ev_init(void) {
     queue_init(&g_event_ctx->evqueue);
     if (g_event_ops.init) g_event_ops.init();
     
-    schk(0 == pipe2(ev_wakefd, O_NONBLOCK), return ERROR);
-    schk(0 == ev_alloc(&ev_wake_rd), return ERROR);
-    ev_opt(ev_wake_rd, ev_wakefd[0], EV_R);
     return OK;
 }
 

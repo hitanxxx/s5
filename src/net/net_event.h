@@ -15,7 +15,6 @@ struct ev_t{
     uint8_t fwrite : 1;
 } ;
 
-void ev_wake(void);
 int ev_opt(ev_t *event, int fd, uint32_t new_mask);
 int ev_loop(void);
 

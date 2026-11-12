@@ -10,7 +10,15 @@ static char *arr_month[] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun",
 
 char *systime_log(void) { return time_str_log; }
 char *systime_gmt(void) { return time_str_gmt; }
-uint64_t systime_msec(void) { return time_msec; }
+
+uint64_t systime_msec(void) { 
+    struct timespec ts;
+    if (clock_gettime(CLOCK_MONOTONIC, &ts) != 0) {
+        err("clock_gettime err. [%d]\n", errno);
+        return 0;
+    }
+    return (uint64_t)ts.tv_sec * 1000 + (uint64_t)ts.tv_nsec / 1000000;
+}
 
 void systime_update(void) {
     struct timeval tv;

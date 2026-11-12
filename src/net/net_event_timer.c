@@ -16,16 +16,8 @@ static ev_timer_t *ev_timer_minimum(void) {
 
 int ev_timer_del(ev_timer_t *timer) {
     if (timer->f_timeset) {
-        uint8_t fwake = 0;
-        if (timer == ev_timer_minimum())
-            fwake = 1;
-        
         schk(heap_del(g_heap, timer->node.index) == 0, return ERROR);
         timer->f_timeset = 0;
-        
-        if (fwake) {
-            ev_wake();
-        }
     }
     return OK;
 }
@@ -42,10 +34,6 @@ int ev_timer_add(ev_timer_t *timer, net_timer_cb cb, void *data, uint64_t delay_
     timer->node.key = (systime_msec() + delay_ms);
     schk(0 == heap_add(g_heap, &timer->node), return ERROR);
     timer->f_timeset = 1;
-
-    if (timer == ev_timer_minimum()) {
-        ev_wake();
-    }
     return OK;
 }
 

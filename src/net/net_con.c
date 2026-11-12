@@ -284,6 +284,7 @@ static int net_accept(con_t *c) {
         new_con->write_cb = NULL;
         net_ev_set(new_con, EV_R);
         if (OK != net_timer_add(new_con, net_free_timeout, NET_TMOUT)) {
+            err("new con timer add err.\n");
             net_free(new_con);
         }
     }
@@ -315,7 +316,10 @@ int net_listen(net_ev_cb cb, struct sockaddr_in *addr, uint8_t fssl) {
         return OK;
     } while (0);
 
-    if (c) net_free(c);
+    if (c) {
+        err("listen err ???\n");
+        net_free(c);
+    }
     return ERROR;
 }
 

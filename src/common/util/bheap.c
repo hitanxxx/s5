@@ -61,20 +61,31 @@ int heap_del(heap_t *heap, uint32_t del_index) {
     heap->index--;
 
     uint32_t pos = del_index;
-    while (pos * 2 <= heap->index) { /// left child is necessary. right child is unnecessary
-        uint32_t child_min = pos * 2;
-        if ((pos * 2 + 1) <= heap->index) {
-            child_min = (heap->array[pos * 2]->key < heap->array[pos * 2 + 1]->key)  ? (pos * 2) : (pos * 2 + 1);
-        }
 
-        if (tail_node->key >= heap->array[child_min]->key) {
-            heap->array[pos] = heap->array[child_min];
+    if (pos > 1 && tail_node->key < heap->array[pos / 2]->key) {
+        /// replacement is smaller than its new parent: sift up
+        while (pos > 1 && tail_node->key < heap->array[pos / 2]->key) {
+            heap->array[pos] = heap->array[pos / 2];
             heap->array[pos]->index = pos;
-            pos = child_min;
-        } else {
-            break;
+            pos /= 2;
+        }
+    } else {
+        while (pos * 2 <= heap->index) { /// left child is necessary. right child is unnecessary
+            uint32_t child_min = pos * 2;
+            if ((pos * 2 + 1) <= heap->index) {
+                child_min = (heap->array[pos * 2]->key < heap->array[pos * 2 + 1]->key)  ? (pos * 2) : (pos * 2 + 1);
+            }
+
+            if (tail_node->key >= heap->array[child_min]->key) {
+                heap->array[pos] = heap->array[child_min];
+                heap->array[pos]->index = pos;
+                pos = child_min;
+            } else {
+                break;
+            }
         }
     }
+    
     heap->array[pos] = tail_node;
     heap->array[pos]->index = pos;
     return 0;
