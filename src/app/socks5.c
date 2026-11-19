@@ -141,7 +141,7 @@ int s5_cup_addr(con_t *cdown) {
         return ERROR;
     });
     session->cup->user_data = session;
-    session->cup->free_user_data = tls_session_release_by_cup;
+    session->cup->free_user_data = tls_session_free;
     session->cup->read_cb = NULL;
     session->cup->write_cb = s5_cup_connect;
 

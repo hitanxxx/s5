@@ -10,7 +10,7 @@ struct net_ssl_t{
     SSL *con;
     void *data;
     
-    uint32_t cached_mask;
+    uint32_t mask;
     net_ev_cb cached_readcb;
     net_ev_cb cached_writecb;
 

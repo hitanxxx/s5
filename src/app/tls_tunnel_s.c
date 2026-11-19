@@ -21,33 +21,23 @@ int tls_session_alloc(tls_tunnel_session_t **session) {
     return ERROR;
 }
 
-void tls_session_release_by_cdown(void *data) {
+void tls_session_free(void *data) {
     tls_tunnel_session_t *session = data;
-
-    if (session->s5) {
-        s5_free(session->s5);
-        session->s5 = NULL;
+    if (session) {
+        if (session->s5) {
+            s5_free(session->s5);
+            session->s5 = NULL;
+        }
+        dns_resolve_free(&session->dns);
+        mem_free(session);
     }
-    dns_resolve_free(&session->dns);
-    mem_free(session);
-}
-
-void tls_session_release_by_cup(void *data) {
-    /// do nothing
-    return;
 }
 
 void tls_session_timeout(ev_timer_t *timer) {
     con_t *c = ev_timer_userdata(timer);
     tls_tunnel_session_t *session = c->user_data;
-
-    if (session->cup) {
-        net_free(session->cup);
-    }
-    
-    if (session->cdown) {
-        net_free(session->cdown);
-    }
+    if (session->cup) net_free(session->cup);
+    if (session->cdown) net_free(session->cdown);
     return;
 }
 
@@ -402,7 +392,7 @@ int tls_tunnel_s_start(con_t *cdown) {
     });
     session->cdown = cdown;
     cdown->user_data = session;
-    cdown->free_user_data = tls_session_release_by_cdown;
+    cdown->free_user_data = NULL;
     
 
     /// s5

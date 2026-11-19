@@ -39,6 +39,7 @@ typedef void (*net_userdata_free_cb)(void *data);
 
 
 struct net_connection_t {
+    queue_t queue;
     struct sockaddr_in addr; /// listen: cli addr. connect: server addr
     int fd;
     meta_t *meta;
@@ -76,9 +77,10 @@ int net_free(con_t *c);
 int net_alloc(con_t **c);
 
 
-uint32_t net_ev_add(con_t *c, uint32_t mask);
-uint32_t net_ev_clr(con_t *c, uint32_t mask);
+void net_ev_add(con_t *c, uint32_t mask);
+void net_ev_clr(con_t *c, uint32_t mask);
 void net_ev_set(con_t *c, uint32_t new_mask);
+void net_ev_set_through(con_t *c, uint32_t mask);
 void net_ev_loop(void);
 
 
@@ -92,6 +94,7 @@ void *ev_timer_userdata(ev_timer_t *timer);
 
 int net_ssl_create(con_t *c, int flag);
 int net_ssl_shutdown(con_t *c);
+void net_ssl_close_no_wait(con_t *c);
 int net_ssl_handshake(con_t *c);
 int net_ssl_check_handshaked(con_t *c);
 int net_ssl_check_handshake_err(con_t *c);

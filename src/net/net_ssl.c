@@ -53,6 +53,20 @@ int net_ssl_check_handshake_err(con_t *c) {
     return 0;
 }
 
+void net_ssl_restore(con_t *c) {
+    if (c->ssl->cached_readcb) {
+        c->read_cb = c->ssl->cached_readcb;
+        c->ssl->cached_readcb = NULL;
+    }
+    if (c->ssl->cached_writecb) {
+        c->write_cb = c->ssl->cached_writecb;
+        c->ssl->cached_writecb = NULL;
+    }
+    net_ev_set(c, c->ev->mask_want);
+    c->ssl->mask = 0;
+    return;
+}
+
 static int net_ssl_read_cb(con_t *c) { return c->read_cb(c); }
 
 static int net_ssl_read(con_t *c, uint8_t *buf, uint32_t bufn) {
@@ -61,28 +75,22 @@ static int net_ssl_read(con_t *c, uint8_t *buf, uint32_t bufn) {
     ssl_clear_error();
     int rc = SSL_read(sslc->con, buf, bufn);
     if (rc > 0) {
-        if (sslc->cached_mask) {
-            net_ev_set(c, c->ssl->cached_mask);
-            c->read_cb = c->ssl->cached_readcb;
-            c->write_cb = c->ssl->cached_writecb;
-            sslc->cached_mask = 0;
-        }
+        net_ssl_restore(c);
         return rc;
     }
 
     int sslerr = SSL_get_error(sslc->con, rc);
     if (sslerr == SSL_ERROR_WANT_READ || sslerr == SSL_ERROR_WANT_WRITE) {
-        if (!sslc->cached_mask) {
-            sslc->cached_mask = c->ev->mask;
-            sslc->cached_readcb = c->read_cb;
-            sslc->cached_writecb = c->write_cb;
-        }
+        if (!sslc->cached_readcb) sslc->cached_readcb = c->read_cb;
+        if (!sslc->cached_writecb) sslc->cached_writecb = c->write_cb;
 
         if (sslerr == SSL_ERROR_WANT_READ) {
-            net_ev_set(c, EV_R);
+            sslc->mask |= EV_R;
+            net_ev_set_through(c, c->ev->mask | sslc->mask);
         } else if (sslerr == SSL_ERROR_WANT_WRITE) {
             c->write_cb = net_ssl_read_cb;
-            net_ev_set(c, EV_W);
+            sslc->mask |= EV_W;
+            net_ev_set_through(c, c->ev->mask | sslc->mask);
         }
         return AGAIN;
     }
@@ -110,28 +118,22 @@ static int net_ssl_write(con_t *c, uint8_t *data, uint32_t datan) {
     ssl_clear_error();
     int rc = SSL_write(sslc->con, data, datan);
     if (rc > 0) {
-        if (sslc->cached_mask) {
-            net_ev_set(c, c->ssl->cached_mask);
-            c->read_cb = c->ssl->cached_readcb;
-            c->write_cb = c->ssl->cached_writecb;
-            sslc->cached_mask = 0;
-        }
+        net_ssl_restore(c);
         return rc;
     }
 
     int sslerr = SSL_get_error(sslc->con, rc);
     if (sslerr == SSL_ERROR_WANT_READ || sslerr == SSL_ERROR_WANT_WRITE) {
-        if (!sslc->cached_mask) {
-            sslc->cached_mask = c->ev->mask;
-            sslc->cached_readcb = c->read_cb;
-            sslc->cached_writecb = c->write_cb;
-        }
+        if (!sslc->cached_readcb) sslc->cached_readcb = c->read_cb;
+        if (!sslc->cached_writecb) sslc->cached_writecb = c->write_cb;
 
         if (sslerr == SSL_ERROR_WANT_READ) {
             c->read_cb = net_ssl_write_cb;
-            net_ev_set(c, EV_R);
+            sslc->mask |= EV_R;
+            net_ev_set_through(c, c->ev->mask | sslc->mask);
         } else if (sslerr == SSL_ERROR_WANT_WRITE) {
-            net_ev_set(c, EV_W);
+            sslc->mask |= EV_W;
+            net_ev_set_through(c, c->ev->mask | sslc->mask);
         }
         return AGAIN;
     }
@@ -237,6 +239,24 @@ int net_ssl_shutdown(con_t *c) {
     return ERROR;
 }
 
+void net_ssl_close_no_wait(con_t *c) {
+    net_ssl_t *sslc = c->ssl;
+    if (!sslc || !sslc->con) return;
+
+    if (sslc->f_closed || SSL_in_init(sslc->con)) {
+        sslc->f_closed = 1;
+        return;
+    }
+
+    ssl_clear_error();
+    (void)SSL_shutdown(sslc->con);      ///try send close notify
+
+    SSL_set_quiet_shutdown(sslc->con, 1);   ///SSL_free no more try shutdown
+    SSL_set_shutdown(sslc->con, SSL_SENT_SHUTDOWN | SSL_RECEIVED_SHUTDOWN);
+    sslc->f_closed = 1;
+    return;
+}
+
 static int net_ssl_handshake_cb(con_t *c) {
     int rc = net_ssl_handshake(c);
     if (rc == -11) {
@@ -244,13 +264,7 @@ static int net_ssl_handshake_cb(con_t *c) {
     }
 
     net_timer_del(c);
-
-    if (c->ssl->cached_mask) {
-        net_ev_set(c, c->ssl->cached_mask);
-        c->read_cb = c->ssl->cached_readcb;
-        c->write_cb = c->ssl->cached_writecb;
-        c->ssl->cached_mask = 0;
-    }
+    net_ssl_restore(c);
     
     ///connect handshake or accept handshake 
     if (c->write_cb) {
@@ -266,12 +280,7 @@ int net_ssl_handshake(con_t *c) {
     ssl_clear_error();
     int rc = SSL_do_handshake(sslc->con);
     if (rc == 1) {
-        if (sslc->cached_mask) {
-            net_ev_set(c, c->ssl->cached_mask);
-            c->read_cb = c->ssl->cached_readcb;
-            c->write_cb = c->ssl->cached_writecb;
-            sslc->cached_mask = 0;
-        }
+        net_ssl_restore(c);
 
         sslc->f_handshakeing = 0;
         sslc->f_handshaked = 1;
@@ -284,18 +293,18 @@ int net_ssl_handshake(con_t *c) {
 
     int sslerr = SSL_get_error(sslc->con, rc);
     if ((sslerr == SSL_ERROR_WANT_READ) || (sslerr == SSL_ERROR_WANT_WRITE)) {
-        if (!sslc->cached_mask) {
-            sslc->cached_mask = c->ev->mask;
-            sslc->cached_readcb = c->read_cb;
-            sslc->cached_writecb = c->write_cb;
-        }
+        if (!sslc->cached_readcb) sslc->cached_readcb = c->read_cb;
+        if (!sslc->cached_writecb) sslc->cached_writecb = c->write_cb;
+        
 
         if (sslerr == SSL_ERROR_WANT_READ) {
             c->read_cb = net_ssl_handshake_cb;
-            net_ev_set(c, EV_R);
+            sslc->mask |= EV_R;
+            net_ev_set_through(c, c->ev->mask | sslc->mask);
         } else if (sslerr == SSL_ERROR_WANT_WRITE) {
             c->write_cb = net_ssl_handshake_cb;
-            net_ev_set(c, EV_W);
+            sslc->mask |= EV_W;
+            net_ev_set_through(c, c->ev->mask | sslc->mask);
         }
         return AGAIN;
     }

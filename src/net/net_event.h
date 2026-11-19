@@ -10,6 +10,7 @@ struct ev_t{
     void *data;
     
     uint32_t mask;   ///current event option (EV_R, EV_W, EV_NONE)
+    uint32_t mask_want;
     
     uint8_t fread : 1;    /// mark readable, writable
     uint8_t fwrite : 1;

@@ -3,6 +3,8 @@
 #include "net_event_timer.h"
 #include "net_ssl.h"
 
+static queue_t queue_idle;
+
 static int net_io_recv_udp(con_t *c, uint8_t *buf, uint32_t bufn) {
     socklen_t socklen = sizeof(struct sockaddr);
     struct sockaddr_in addr = {0};
@@ -359,39 +361,18 @@ void net_free_thorough(con_t *c) {
     return;
 }
 
-static void net_free_timeout_ssl_shutdown(ev_timer_t *timer) {
-    con_t *c = ev_timer_userdata(timer);
-    net_free_thorough(c);
-}
-
 void net_free_timeout(ev_timer_t *timer) {
     con_t *c = ev_timer_userdata(timer);
     net_free(c);
 }
 
 int net_free(con_t *c) {
-    if (c->fclosing) return OK;
-    c->fclosing = 1;
-
-    if (c->ssl) {
-        if (c->ssl->f_closed) {
-            net_free_thorough(c);
-            return OK;
-        }
-
-        net_timer_add(c, net_free_timeout_ssl_shutdown, NET_TMOUT);
-        int rc = net_ssl_shutdown(c);
-        if (rc == AGAIN) {
-            return AGAIN;
-        }
-        
-        net_free_thorough(c);
-        return OK;
+    if (!c->fclosing) {
+        c->fclosing = 1;
+        queue_insert_tail(&queue_idle, &c->queue);
     }
-    net_free_thorough(c);
     return OK;
 }
-
 
 int net_alloc(con_t **c) {
     con_t *new_con = mem_alloc(sizeof(con_t));
@@ -409,6 +390,7 @@ int net_alloc(con_t **c) {
 }
 
 int net_init(void) {
+    queue_init(&queue_idle);
     schk(OK == ev_timer_init(), return ERROR);
     schk(OK == ev_init(), return ERROR);
     schk(OK == net_ssl_init(), return ERROR);
@@ -419,27 +401,59 @@ int net_exit(void) {
     net_ssl_exit();
     ev_exit();
     ev_timer_exit();
+
+    ///clear queue
+    if (!queue_empty(&queue_idle)) {
+        queue_t *n = NULL;
+        queue_t *q = queue_head(&queue_idle);
+        while (q != queue_tail(&queue_idle)) {
+            n = queue_next(q);
+            con_t *c = ptr_get_struct(q, con_t ,queue);
+            if (c->ssl) net_ssl_close_no_wait(c);
+            net_free_thorough(c);
+            queue_remove(q);
+            q = n;
+        }
+    }
     return OK;
 }
 
 void net_ev_loop(void) {
     ev_loop();
+
+    ///clear queue after all event process finish
+    if (!queue_empty(&queue_idle)) {
+        queue_t *n = NULL;
+        queue_t *q = queue_head(&queue_idle);
+        while (q != queue_tail(&queue_idle)) {
+            n = queue_next(q);
+            con_t *c = ptr_get_struct(q, con_t ,queue);
+            if (c->ssl) net_ssl_close_no_wait(c);
+            net_free_thorough(c);
+            queue_remove(q);
+            q = n;
+        }
+    }
+    return;
+}
+
+void net_ev_set_through(con_t *c, uint32_t mask) {
+    ev_opt(c->ev, c->fd, mask);
     return;
 }
 
 void net_ev_set(con_t *c, uint32_t new_mask) {
+    c->ev->mask_want = new_mask;
     ev_opt(c->ev, c->fd, new_mask);
     return;
 }
 
-uint32_t net_ev_add(con_t *c, uint32_t mask) {
-    c->ev->mask |= mask;
-    return c->ev->mask;
+void net_ev_add(con_t *c, uint32_t mask) {
+    net_ev_set(c, c->ev->mask_want | mask);
 }
 
-uint32_t net_ev_clr(con_t *c, uint32_t mask) {
-    c->ev->mask &= ~mask;
-    return c->ev->mask;
+void net_ev_clr(con_t *c, uint32_t mask) {
+    net_ev_set(c, c->ev->mask_want & ~mask);
 }
 
 int net_timer_add(con_t *c, net_timer_cb cb, uint64_t delay_ms) {

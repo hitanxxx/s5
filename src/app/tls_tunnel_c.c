@@ -164,7 +164,7 @@ int tls_tunnel_c_accept(con_t *cdown) {
     }
     session->cdown = cdown;
     cdown->user_data = session;
-    cdown->free_user_data = tls_session_release_by_cdown;
+    cdown->free_user_data = NULL;
     cdown->read_cb = tls_tunnel_c_recv_in_cache;
     cdown->write_cb = NULL;
 
@@ -175,7 +175,7 @@ int tls_tunnel_c_accept(con_t *cdown) {
         return ERROR;
     }
     session->cup->user_data = session;
-    session->cup->free_user_data = tls_session_release_by_cup;
+    session->cup->free_user_data = tls_session_free;
     session->cup->read_cb = tls_tunnel_c_connect_chk;
     session->cup->write_cb = tls_tunnel_c_connect_chk;
     
@@ -187,8 +187,8 @@ int tls_tunnel_c_accept(con_t *cdown) {
             net_timer_add(session->cup, tls_session_timeout, TLS_TMOUT);
         } else {
             err("tls tunnel. cup connect err\n");
-            net_free(session->cup);
             net_free(cdown);
+            net_free(session->cup);
             return ERROR;
         }
     }
