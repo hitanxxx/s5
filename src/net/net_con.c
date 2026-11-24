@@ -402,19 +402,6 @@ int net_exit(void) {
     ev_exit();
     ev_timer_exit();
 
-    ///clear queue
-    if (!queue_empty(&queue_idle)) {
-        queue_t *n = NULL;
-        queue_t *q = queue_head(&queue_idle);
-        while (q != queue_tail(&queue_idle)) {
-            n = queue_next(q);
-            con_t *c = ptr_get_struct(q, con_t ,queue);
-            if (c->ssl) net_ssl_close_no_wait(c);
-            net_free_thorough(c);
-            queue_remove(q);
-            q = n;
-        }
-    }
     return OK;
 }
 
@@ -427,11 +414,13 @@ void net_ev_loop(void) {
         queue_t *q = queue_head(&queue_idle);
         while (q != queue_tail(&queue_idle)) {
             n = queue_next(q);
-            con_t *c = ptr_get_struct(q, con_t ,queue);
+            
+	    con_t *c = ptr_get_struct(q, con_t ,queue);
             if (c->ssl) net_ssl_close_no_wait(c);
-            net_free_thorough(c);
             queue_remove(q);
-            q = n;
+            net_free_thorough(c);
+            
+	    q = n;
         }
     }
     return;
