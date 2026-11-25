@@ -12,12 +12,13 @@ static uint32_t fnv1a_32(void *data, uint32_t datan) {
 }
 
 int ezhash_create(ezhash_t **out, uint32_t space) {
+    if (space == 0) return ERROR;
     ezhash_t *hash = mem_alloc(sizeof(ezhash_t));
     if (hash) {
         hash->arrn = space;
         hash->arr = mem_alloc(space * sizeof(queue_t));
         if (hash->arr) {
-            for (int i = 0; i < space; i++) queue_init(&hash->arr[i]);
+            for (uint32_t i = 0; i < space; i++) queue_init(&hash->arr[i]);
             hash->hash_func = fnv1a_32;
             *out = hash;
             return OK;

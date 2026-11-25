@@ -2,6 +2,7 @@
 #include "dns.h"
 
 typedef struct  {
+    queue_t         queue;
     ev_timer_t      *timer;
     char            req_query[DOMAIN_LENGTH];
     uint32_t        req_query_len;
@@ -13,6 +14,8 @@ typedef struct dns_ctx_s {
     dnsc_t      *dns_map[0xffff];
     ezhash_t    *dns_cache;
     uint16_t    transaction_id;
+
+    queue_t     queue_rec;
 } dns_ctx_t;
 
 static dns_ctx_t *dns_ctx = NULL;
@@ -36,6 +39,7 @@ static void dns_cache_timeout(ev_timer_t *timer) {
         err("dns cache timeout. cache hash del err\n");
     }
     if (cache->timer) ev_timer_free(cache->timer);
+    queue_remove(&cache->queue);
     mem_free(cache);
 }
 
@@ -47,11 +51,12 @@ static int dns_cache_add(char *req_query, uint32_t req_query_len, uint8_t *addr,
         memcpy(cache->addr, addr, 4);
         if (ms > DNS_TTL_MAX) ms = DNS_TTL_MAX;
 
-        if (0 == ezhash_add(dns_ctx->dns_cache, req_query, req_query_len, &cache, sizeof(dns_cache_record_t *))) {
+        if (OK == ezhash_add(dns_ctx->dns_cache, req_query, req_query_len, &cache, sizeof(dns_cache_record_t *))) {
             cache->timer = ev_timer_alloc_once(dns_cache_timeout, cache, ms);
+            queue_insert_tail(&dns_ctx->queue_rec, &cache->queue);
         } else {
             mem_free(cache);
-        }
+        } 
     }
     return OK;
 }
@@ -335,6 +340,7 @@ int dns_init(void) {
         dns_ctx = sys_alloc(sizeof(dns_ctx_t));
         schk(dns_ctx, return ERROR);
         memset(dns_ctx, 0x0, sizeof(dns_ctx_t));
+        queue_init(&dns_ctx->queue_rec);
         schk(0 == ezhash_create(&dns_ctx->dns_cache, 1024), return ERROR);
         
         schk(0 == net_alloc(&dns_ctx->c), return ERROR);
@@ -353,10 +359,25 @@ int dns_init(void) {
 
 int dns_end(void) {
     if (dns_ctx) {
-        if (dns_ctx->c)  
-            net_free(dns_ctx->c);
-        if (dns_ctx->dns_cache) 
-            ezhash_free(dns_ctx->dns_cache);
+        if (!queue_empty(&dns_ctx->queue_rec)) {
+            queue_t *n = NULL;
+            queue_t *q = queue_head(&dns_ctx->queue_rec);
+            while (q != queue_tail(&dns_ctx->queue_rec)) {
+                n = queue_next(q);
+
+                dns_cache_record_t *cache = ptr_get_struct(q, dns_cache_record_t, queue);
+                if (OK != ezhash_del(dns_ctx->dns_cache, cache->req_query, cache->req_query_len)) {
+                    err("dns cache clr err\n");
+                }
+                if (cache->timer) ev_timer_free(cache->timer);
+                queue_remove(&cache->queue);
+                mem_free(cache);
+
+                q = n;
+            }
+        }
+        if (dns_ctx->c)  net_free_thorough(dns_ctx->c);
+        if (dns_ctx->dns_cache)  ezhash_free(dns_ctx->dns_cache);
         sys_free(dns_ctx);
         dns_ctx = NULL;
     }

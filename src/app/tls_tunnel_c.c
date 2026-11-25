@@ -164,7 +164,7 @@ int tls_tunnel_c_accept(con_t *cdown) {
     }
     session->cdown = cdown;
     cdown->user_data = session;
-    cdown->free_user_data = NULL;
+    cdown->free_user_data = tls_session_free;
     cdown->read_cb = tls_tunnel_c_recv_in_cache;
     cdown->write_cb = NULL;
 
@@ -175,7 +175,7 @@ int tls_tunnel_c_accept(con_t *cdown) {
         return ERROR;
     }
     session->cup->user_data = session;
-    session->cup->free_user_data = tls_session_free;
+    session->cup->free_user_data = NULL;
     session->cup->read_cb = tls_tunnel_c_connect_chk;
     session->cup->write_cb = tls_tunnel_c_connect_chk;
     

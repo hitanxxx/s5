@@ -40,7 +40,7 @@ COBJS += $(patsubst %.c,%.o,$(patsubst %.cpp,%.o,$(CSRCS)))
 LDFLAGS += -lcrypto -lssl -lpthread -lm -ldl
 
 CFLAGS += -Wall -ffunction-sections -fdata-sections -Wl,--gc-sections
-CFLAGS += -O2
+CFLAGS += -O0 -g
 CFLAGS += -fstrict-aliasing -march=native -mtune=native -pipe
 CFLAGS += $(DEFINE) $(INCLUDE)
 
@@ -59,7 +59,7 @@ s5: $(COBJS)
 	@echo "[CC]:($(CC))"
 	@echo "[DEFINE]:($(DEFINE))"
 	$(CC) -o $@ $(COBJS) $(LDFLAGS)
-	$(STRIP) $@
+	#$(STRIP) $@
 	@md5sum $@
 	@echo "===== compile finish ====="
 

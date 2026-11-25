@@ -4,6 +4,7 @@
 #include "net_ssl.h"
 
 static queue_t queue_idle;
+static queue_t queue_listen;
 
 static int net_io_recv_udp(con_t *c, uint8_t *buf, uint32_t bufn) {
     socklen_t socklen = sizeof(struct sockaddr);
@@ -166,6 +167,7 @@ static int net_socket_fastopen(int fd) {
 
 static int net_socket_nodelay(int fd) {
     int flag = 1;
+
     return setsockopt(fd, IPPROTO_TCP, TCP_NODELAY,
         (const void *)&flag, sizeof(int));
 }
@@ -315,6 +317,8 @@ int net_listen(net_ev_cb cb, struct sockaddr_in *addr, uint8_t fssl) {
         c->free_user_data = NULL;
         c->fssl = (fssl ? 1 : 0);
         net_ev_set(c, EV_R);
+
+        queue_insert_tail(&queue_listen, &c->queue);
         return OK;
     } while (0);
 
@@ -391,6 +395,8 @@ int net_alloc(con_t **c) {
 
 int net_init(void) {
     queue_init(&queue_idle);
+    queue_init(&queue_listen);
+    
     schk(OK == ev_timer_init(), return ERROR);
     schk(OK == ev_init(), return ERROR);
     schk(OK == net_ssl_init(), return ERROR);
@@ -398,10 +404,41 @@ int net_init(void) {
 }
 
 int net_exit(void) {
+    
+    ///clear queue after all event process finish
+    if (!queue_empty(&queue_idle)) {
+        queue_t *n = NULL;
+        queue_t *q = queue_head(&queue_idle);
+        while (q != queue_tail(&queue_idle)) {
+            n = queue_next(q);
+            
+            con_t *c = ptr_get_struct(q, con_t, queue);
+            if (c->ssl) net_ssl_close_no_wait(c);
+            queue_remove(q);
+            net_free_thorough(c);
+            
+            q = n;
+        }
+    }
+    
+    if (!queue_empty(&queue_listen)) {
+        queue_t *n = NULL;
+        queue_t *q = queue_head(&queue_listen);
+        while (q != queue_tail(&queue_listen)) {
+            n = queue_next(q);
+
+            con_t *c = ptr_get_struct(q, con_t, queue);
+            if (c->ssl) net_ssl_close_no_wait(c);
+            queue_remove(q);
+            net_free_thorough(c);
+
+            q = n;
+        }
+    }
+
     net_ssl_exit();
     ev_exit();
     ev_timer_exit();
-
     return OK;
 }
 
@@ -415,12 +452,12 @@ void net_ev_loop(void) {
         while (q != queue_tail(&queue_idle)) {
             n = queue_next(q);
             
-	    con_t *c = ptr_get_struct(q, con_t ,queue);
+            con_t *c = ptr_get_struct(q, con_t ,queue);
             if (c->ssl) net_ssl_close_no_wait(c);
             queue_remove(q);
             net_free_thorough(c);
             
-	    q = n;
+            q = n;
         }
     }
     return;

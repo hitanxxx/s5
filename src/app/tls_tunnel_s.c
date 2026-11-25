@@ -392,7 +392,7 @@ int tls_tunnel_s_start(con_t *cdown) {
     });
     session->cdown = cdown;
     cdown->user_data = session;
-    cdown->free_user_data = NULL;
+    cdown->free_user_data = tls_session_free;
     
 
     /// s5
@@ -488,9 +488,7 @@ int tls_tunnel_s_init(void) {
 
 int tls_tunnel_s_exit(void) {
     if (g_ses_ctx) {
-        if (g_ses_ctx->ac)
-            ezac_free(g_ses_ctx->ac);
-
+        if (g_ses_ctx->ac) ezac_free(g_ses_ctx->ac);
         mem_free((void *)g_ses_ctx);
         g_ses_ctx = NULL;
     }

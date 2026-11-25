@@ -19,7 +19,7 @@ static int s5_cdown_recv(con_t *cdown) {
                 net_timer_add(cdown, tls_session_timeout, TLS_TMOUT);
                 return AGAIN;
             }
-            err("s5. cdown wait cup connect. recv err.\n");
+            ///err("s5. cdown wait cup connect. recv err.\n");
             net_free(session->cup);
             net_free(cdown);
             return ERROR;
@@ -141,7 +141,7 @@ int s5_cup_addr(con_t *cdown) {
         return ERROR;
     });
     session->cup->user_data = session;
-    session->cup->free_user_data = tls_session_free;
+    session->cup->free_user_data = NULL;
     session->cup->read_cb = NULL;
     session->cup->write_cb = s5_cup_connect;
 

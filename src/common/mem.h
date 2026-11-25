@@ -5,6 +5,8 @@
 extern "C" {
 #endif
 
+///#define MEM_BY_SYSCALL
+
 void *sys_alloc(int size);
 void sys_free(void *addr);
 
